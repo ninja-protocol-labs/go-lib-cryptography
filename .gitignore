@@ -1,0 +1,18 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.a
+
+vendor/
+
+# Go workspace file
+go.work
+.idea/
+.vscode/
+.DS_Store
+
+/bin/
+/dist/
