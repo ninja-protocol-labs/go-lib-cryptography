@@ -54,4 +54,46 @@ var (
 	// not something normal operation can produce, since the key involved
 	// is already validated at construction.
 	ErrEllswiftFailed = errors.New("secp256k1: ellswift encoding failed")
+
+	// ErrMusigKeyAggFailed means MusigAggregateKeys failed: zero keys, more
+	// than MaxCombinePubkeys keys, or a set that sums to the point at
+	// infinity.
+	ErrMusigKeyAggFailed = errors.New("secp256k1: MuSig2 key aggregation failed")
+
+	// ErrMusigNonceGenFailed means generating a MuSig2 nonce pair failed.
+	ErrMusigNonceGenFailed = errors.New("secp256k1: MuSig2 nonce generation failed")
+
+	// ErrInvalidMusigPubNonce means the given bytes are not a valid
+	// 66-byte encoded MuSig2 public nonce.
+	ErrInvalidMusigPubNonce = errors.New("secp256k1: invalid MuSig2 public nonce")
+
+	// ErrMusigNonceAggFailed means MusigAggregateNonces failed: zero
+	// pubnonces, or more than MaxCombinePubkeys of them.
+	ErrMusigNonceAggFailed = errors.New("secp256k1: MuSig2 nonce aggregation failed")
+
+	// ErrInvalidMusigAggNonce means the given bytes are not a valid
+	// 66-byte encoded MuSig2 aggregate nonce.
+	ErrInvalidMusigAggNonce = errors.New("secp256k1: invalid MuSig2 aggregate nonce")
+
+	// ErrMusigSessionFailed means MusigProcessNonce failed.
+	ErrMusigSessionFailed = errors.New("secp256k1: MuSig2 session setup failed")
+
+	// ErrMusigSecnonceReused means Sign was called twice on the same
+	// *MusigSecnonce. The first call, successful or not, is final —
+	// nonce reuse leaks the secret key outright, so this is refused
+	// rather than attempted.
+	ErrMusigSecnonceReused = errors.New("secp256k1: MuSig2 secnonce already used")
+
+	// ErrMusigPartialSignFailed means producing a MuSig2 partial signature
+	// failed — most commonly a MusigSecnonce that was not generated for
+	// the given priv and session.
+	ErrMusigPartialSignFailed = errors.New("secp256k1: MuSig2 partial signing failed")
+
+	// ErrInvalidMusigPartialSig means the given bytes are not a valid
+	// 32-byte encoded MuSig2 partial signature.
+	ErrInvalidMusigPartialSig = errors.New("secp256k1: invalid MuSig2 partial signature")
+
+	// ErrMusigSigAggFailed means MusigAggregateSignatures failed: zero
+	// partial signatures, or more than MaxCombinePubkeys of them.
+	ErrMusigSigAggFailed = errors.New("secp256k1: MuSig2 signature aggregation failed")
 )

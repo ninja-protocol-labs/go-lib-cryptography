@@ -6,12 +6,13 @@ import (
 	"testing"
 )
 
-// The order of the secp256k1 group. S values live in [1, n-1]; flipping one
-// (n - s) turns a low-S signature into its high-S counterpart and back,
-// which is how flipHighS below manufactures a high-S test signature without
-// a from-scratch test vector.
-var curveOrder, _ = new(big.Int).SetString(
-	"fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141", 16,
+var (
+	// The order of the secp256k1 group. S values live in [1, n-1]; flipping one
+	// (n - s) turns a low-S signature into its high-S counterpart and back,
+	// which is how flipHighS below manufactures a high-S test signature without
+	// a from-scratch test vector.
+	curveOrder, _ = new(big.Int).SetString("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141", 16)
+	testMsg       = []byte("the quick brown fox jumps over the lazy dog")
 )
 
 // flipHighS takes a 64-byte compact (r||s) signature — SignCompact always

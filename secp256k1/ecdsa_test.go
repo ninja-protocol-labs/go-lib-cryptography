@@ -6,8 +6,6 @@ import (
 	"github.com/ninja-protocol-labs/go-lib-cryptography/secp256k1/internal"
 )
 
-var testMsg = []byte("the quick brown fox jumps over the lazy dog")
-
 func TestSignCompactVerifyCompactRoundTrip(t *testing.T) {
 	priv := seckeyOne(t)
 	pub, err := priv.PublicKey()
