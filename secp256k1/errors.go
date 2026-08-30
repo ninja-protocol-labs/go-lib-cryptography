@@ -33,4 +33,25 @@ var (
 	// or (for Recover/RecoverDigest) do not yield a valid public key for
 	// the given recovery id.
 	ErrInvalidSignature = errors.New("secp256k1: invalid signature")
+
+	// ErrECDHFailed means computing a shared secret failed despite valid
+	// inputs — not something normal operation can produce, since both
+	// PrivateKey and PublicKey are already validated at construction.
+	ErrECDHFailed = errors.New("secp256k1: ECDH failed")
+
+	// ErrTweakFailed means TweakAdd/TweakMul produced an invalid result —
+	// most commonly a tweak that exactly cancels the key it is applied to.
+	// A uniformly random tweak triggers this only with negligible
+	// probability, but it is a real, reachable failure, not a "can't
+	// happen" case.
+	ErrTweakFailed = errors.New("secp256k1: key tweak failed")
+
+	// ErrNegateFailed means negating an already-validated key failed — not
+	// something normal operation can produce.
+	ErrNegateFailed = errors.New("secp256k1: key negation failed")
+
+	// ErrEllswiftFailed means producing an ElligatorSwift encoding failed —
+	// not something normal operation can produce, since the key involved
+	// is already validated at construction.
+	ErrEllswiftFailed = errors.New("secp256k1: ellswift encoding failed")
 )
