@@ -65,7 +65,7 @@ func PubkeyParseUncompressed(pubkey []byte) ([PubkeyUncompressedLen]byte, bool) 
 
 // SeckeyNegate replaces seckey in place with n - seckey, where n is the curve
 // order. Its point on the curve keeps the same x coordinate and flips y —
-// what Taproot needs to normalize a key to even y parity.
+// used to normalize a key to a chosen y parity.
 func SeckeyNegate(seckey *[SeckeyLen]byte) bool {
 	return C.shim_seckey_negate(context(), (*C.uchar)(&seckey[0])) == 1
 }
@@ -135,8 +135,8 @@ func PubkeyCmp(a, b []byte) (int, bool) {
 }
 
 // PubkeySortCompressed sorts pubkeys in place by the same ordering as
-// PubkeyCmp — the ordering multisig scripts require for a deterministic key
-// list. At most MaxCombinePubkeys keys are accepted.
+// PubkeyCmp — the canonical ordering key-aggregation schemes rely on for a
+// deterministic key list. At most MaxCombinePubkeys keys are accepted.
 func PubkeySortCompressed(pubkeys [][PubkeyCompressedLen]byte) bool {
 	if len(pubkeys) == 0 || len(pubkeys) > MaxCombinePubkeys {
 		return false
@@ -145,7 +145,7 @@ func PubkeySortCompressed(pubkeys [][PubkeyCompressedLen]byte) bool {
 }
 
 // SeckeyTweakAdd replaces seckey in place with seckey + tweak mod n. This is
-// the secret-key half of BIP32 non-hardened child derivation.
+// the secret-key half of additive key derivation schemes.
 func SeckeyTweakAdd(seckey *[SeckeyLen]byte, tweak *[TweakLen]byte) bool {
 	return C.shim_seckey_tweak_add(context(), (*C.uchar)(&seckey[0]), (*C.uchar)(&tweak[0])) == 1
 }

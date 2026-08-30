@@ -457,3 +457,194 @@ int shim_ecdsa_recover(
 
     return secp256k1_ec_pubkey_serialize(ctx, output, output_len, &pubkey, flags);
 }
+
+/* ------------------------------------------------------------ x-only keys */
+
+int shim_xonly_pubkey_create(
+    const secp256k1_context *ctx,
+    const unsigned char seckey32[SHIM_SECKEY_LEN],
+    unsigned char output32[SHIM_XONLY_PUBKEY_LEN],
+    int *parity
+) {
+    secp256k1_keypair keypair;
+    secp256k1_xonly_pubkey xonly;
+
+    // secp256k1_keypair only exists to carry state between these two calls;
+    // it never leaves this function, matching the rest of the shim's rule
+    // that no C struct crosses into Go.
+    if (!secp256k1_keypair_create(ctx, &keypair, seckey32)) {
+        return 0;
+    }
+    if (!secp256k1_keypair_xonly_pub(ctx, &xonly, parity, &keypair)) {
+        return 0;
+    }
+
+    return secp256k1_xonly_pubkey_serialize(ctx, output32, &xonly);
+}
+
+int shim_xonly_pubkey_verify(
+    const secp256k1_context *ctx,
+    const unsigned char pubkey32[SHIM_XONLY_PUBKEY_LEN]
+) {
+    secp256k1_xonly_pubkey parsed;
+    return secp256k1_xonly_pubkey_parse(ctx, &parsed, pubkey32);
+}
+
+int shim_xonly_pubkey_from_pubkey(
+    const secp256k1_context *ctx,
+    const unsigned char *pubkey,
+    size_t pubkey_len,
+    unsigned char output32[SHIM_XONLY_PUBKEY_LEN],
+    int *parity
+) {
+    secp256k1_pubkey parsed;
+    secp256k1_xonly_pubkey xonly;
+
+    if (!secp256k1_ec_pubkey_parse(ctx, &parsed, pubkey, pubkey_len)) {
+        return 0;
+    }
+    if (!secp256k1_xonly_pubkey_from_pubkey(ctx, &xonly, parity, &parsed)) {
+        return 0;
+    }
+
+    return secp256k1_xonly_pubkey_serialize(ctx, output32, &xonly);
+}
+
+int shim_xonly_pubkey_cmp(
+    const secp256k1_context *ctx,
+    const unsigned char pubkey_a32[SHIM_XONLY_PUBKEY_LEN],
+    const unsigned char pubkey_b32[SHIM_XONLY_PUBKEY_LEN],
+    int *result
+) {
+    secp256k1_xonly_pubkey a, b;
+
+    if (!secp256k1_xonly_pubkey_parse(ctx, &a, pubkey_a32)) {
+        return 0;
+    }
+    if (!secp256k1_xonly_pubkey_parse(ctx, &b, pubkey_b32)) {
+        return 0;
+    }
+
+    *result = secp256k1_xonly_pubkey_cmp(ctx, &a, &b);
+    return 1;
+}
+
+int shim_xonly_pubkey_tweak_add(
+    const secp256k1_context *ctx,
+    const unsigned char pubkey32[SHIM_XONLY_PUBKEY_LEN],
+    const unsigned char tweak32[SHIM_TWEAK_LEN],
+    unsigned char output32[SHIM_XONLY_PUBKEY_LEN],
+    int *parity
+) {
+    secp256k1_xonly_pubkey internal;
+    secp256k1_pubkey tweaked;
+    secp256k1_xonly_pubkey tweaked_xonly;
+
+    if (!secp256k1_xonly_pubkey_parse(ctx, &internal, pubkey32)) {
+        return 0;
+    }
+    if (!secp256k1_xonly_pubkey_tweak_add(ctx, &tweaked, &internal, tweak32)) {
+        return 0;
+    }
+    if (!secp256k1_xonly_pubkey_from_pubkey(ctx, &tweaked_xonly, parity, &tweaked)) {
+        return 0;
+    }
+
+    return secp256k1_xonly_pubkey_serialize(ctx, output32, &tweaked_xonly);
+}
+
+int shim_xonly_pubkey_tweak_add_check(
+    const secp256k1_context *ctx,
+    const unsigned char output32[SHIM_XONLY_PUBKEY_LEN],
+    int output_parity,
+    const unsigned char internal32[SHIM_XONLY_PUBKEY_LEN],
+    const unsigned char tweak32[SHIM_TWEAK_LEN]
+) {
+    secp256k1_xonly_pubkey internal;
+
+    if (!secp256k1_xonly_pubkey_parse(ctx, &internal, internal32)) {
+        return 0;
+    }
+
+    return secp256k1_xonly_pubkey_tweak_add_check(ctx, output32, output_parity, &internal, tweak32);
+}
+
+int shim_seckey_xonly_tweak_add(
+    const secp256k1_context *ctx,
+    unsigned char seckey32[SHIM_SECKEY_LEN],
+    const unsigned char tweak32[SHIM_TWEAK_LEN]
+) {
+    secp256k1_keypair keypair;
+
+    if (!secp256k1_keypair_create(ctx, &keypair, seckey32)) {
+        return 0;
+    }
+    if (!secp256k1_keypair_xonly_tweak_add(ctx, &keypair, tweak32)) {
+        return 0;
+    }
+
+    return secp256k1_keypair_sec(ctx, seckey32, &keypair);
+}
+
+/* -------------------------------------------------------- Schnorr signatures */
+
+int shim_schnorr_sign(
+    const secp256k1_context *ctx,
+    const unsigned char *msg,
+    size_t msg_len,
+    const unsigned char seckey32[SHIM_SECKEY_LEN],
+    const unsigned char *aux_rand32,
+    unsigned char output64[SHIM_SIGNATURE_COMPACT_LEN]
+) {
+    secp256k1_keypair keypair;
+    secp256k1_schnorrsig_extraparams extraparams = SECP256K1_SCHNORRSIG_EXTRAPARAMS_INIT;
+
+    if (!secp256k1_keypair_create(ctx, &keypair, seckey32)) {
+        return 0;
+    }
+
+    // Leaving noncefp NULL selects the module's default nonce function,
+    // deterministic from msg and the keypair; ndata carries aux_rand32
+    // through as extra entropy folded into that derivation, the same
+    // hedged-but-safe pattern as ECDSA's aux_rand.
+    extraparams.ndata = (void *)aux_rand32;
+
+    return secp256k1_schnorrsig_sign_custom(ctx, output64, msg, msg_len, &keypair, &extraparams);
+}
+
+int shim_schnorr_verify(
+    const secp256k1_context *ctx,
+    const unsigned char *msg,
+    size_t msg_len,
+    const unsigned char pubkey32[SHIM_XONLY_PUBKEY_LEN],
+    const unsigned char signature64[SHIM_SIGNATURE_COMPACT_LEN]
+) {
+    secp256k1_xonly_pubkey pubkey;
+
+    if (!secp256k1_xonly_pubkey_parse(ctx, &pubkey, pubkey32)) {
+        return 0;
+    }
+
+    return secp256k1_schnorrsig_verify(ctx, signature64, msg, msg_len, &pubkey);
+}
+
+/* -------------------------------------------------------------------- ECDH */
+
+int shim_ecdh(
+    const secp256k1_context *ctx,
+    const unsigned char *pubkey,
+    size_t pubkey_len,
+    const unsigned char seckey32[SHIM_SECKEY_LEN],
+    unsigned char output32[SHIM_SHARED_SECRET_LEN]
+) {
+    secp256k1_pubkey parsed;
+
+    if (!secp256k1_ec_pubkey_parse(ctx, &parsed, pubkey, pubkey_len)) {
+        return 0;
+    }
+
+    // Passing NULL for hashfp selects the default hash function, SHA-256 of
+    // the compressed shared point, matching this function's documented
+    // contract.
+    return secp256k1_ecdh(ctx, output32, &parsed, seckey32, NULL, NULL);
+}

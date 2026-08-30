@@ -4,7 +4,10 @@
 #include <stddef.h>
 
 #include "secp256k1.h"
+#include "secp256k1_ecdh.h"
+#include "secp256k1_extrakeys.h"
 #include "secp256k1_recovery.h"
+#include "secp256k1_schnorrsig.h"
 
 // This shim collapses the multi-step libsecp256k1 sequences into one call each.
 // Creating a public key upstream means ec_pubkey_create followed by
@@ -38,8 +41,8 @@
 
 // shim_pubkey_combine and shim_pubkey_sort take their keys as a caller-owned
 // stack array sized against this, rather than allocating: a cap high enough
-// for any real multisig or key-aggregation scheme, low enough that even the
-// maximum request cannot threaten the stack.
+// for any real key-aggregation scheme, low enough that even the maximum
+// request cannot threaten the stack.
 #define SHIM_MAX_COMBINE_PUBKEYS 64
 
 /* ---------------------------------------------------------------- context */
@@ -84,8 +87,8 @@ int shim_pubkey_parse(
     int compressed
 );
 
-// Negation flips the sign of the key, which Taproot needs when a derived point
-// lands on the wrong y parity. The seckey variant mutates in place.
+// Negation flips the sign of the key, useful when a derived point needs to
+// be normalized to a chosen y parity. The seckey variant mutates in place.
 
 int shim_seckey_negate(
     const secp256k1_context *ctx,
@@ -123,8 +126,8 @@ int shim_pubkey_cmp(
     int *result
 );
 
-// Sorts pubkey_count compressed 33-byte keys in place. Multisig scripts depend
-// on a deterministic key order, and this is the ordering upstream defines.
+// Sorts pubkey_count compressed 33-byte keys in place, using the ordering
+// upstream defines — the canonical order key-aggregation schemes rely on.
 int shim_pubkey_sort(
     const secp256k1_context *ctx,
     unsigned char *pubkeys,
@@ -133,9 +136,9 @@ int shim_pubkey_sort(
 
 /* ----------------------------------------------------------------- tweaks */
 
-// Tweaks needed for BIP32 child key derivation. The seckey variants mutate
-// seckey32 in place; the pubkey variants take a serialized key and write the
-// tweaked result to output.
+// Tweaks needed for additive/multiplicative key derivation schemes. The
+// seckey variants mutate seckey32 in place; the pubkey variants take a
+// serialized key and write the tweaked result to output.
 
 int shim_seckey_tweak_add(
     const secp256k1_context *ctx,
@@ -169,11 +172,11 @@ int shim_pubkey_tweak_mul(
     int compressed
 );
 
-/* ------------------------------------------------- x-only keys (BIP340/341) */
+/* ------------------------------------------------------------ x-only keys */
 
-// BIP340 uses x-only public keys: the 32-byte x coordinate with the y parity
-// dropped. Where a parity out-parameter appears it receives 0 or 1, which is
-// what lets the full key be reconstructed later.
+// x-only public keys are the 32-byte x coordinate with the y parity dropped.
+// Where a parity out-parameter appears it receives 0 or 1, which is what lets
+// the full key be reconstructed later.
 
 int shim_xonly_pubkey_create(
     const secp256k1_context *ctx,
@@ -202,8 +205,8 @@ int shim_xonly_pubkey_cmp(
     int *result
 );
 
-// The Taproot output key: tweaks an internal x-only key by tweak32 and returns
-// the result as x-only plus its parity.
+// Tweaks an internal x-only key by tweak32 and returns the result as x-only
+// plus its parity.
 int shim_xonly_pubkey_tweak_add(
     const secp256k1_context *ctx,
     const unsigned char pubkey32[SHIM_XONLY_PUBKEY_LEN],
@@ -222,8 +225,8 @@ int shim_xonly_pubkey_tweak_add_check(
     const unsigned char tweak32[SHIM_TWEAK_LEN]
 );
 
-// The secret-key half of the Taproot tweak: mutates seckey32 so that its x-only
-// public key matches shim_xonly_pubkey_tweak_add's output.
+// The secret-key half of shim_xonly_pubkey_tweak_add: mutates seckey32 so
+// that its x-only public key matches that function's output.
 int shim_seckey_xonly_tweak_add(
     const secp256k1_context *ctx,
     unsigned char seckey32[SHIM_SECKEY_LEN],
@@ -233,8 +236,8 @@ int shim_seckey_xonly_tweak_add(
 /* ------------------------------------------------------------------ ECDSA */
 
 // msg32 is always a hash, never a raw message: ECDSA signs a 32-byte digest.
-// Signatures come out low-S normalized, which is what Bitcoin and Ethereum
-// require.
+// Signatures come out low-S normalized, matching the convention most
+// downstream protocols require.
 //
 // The nonce is derived deterministically from msg32 and seckey32 (RFC 6979),
 // never drawn from randomness, so a failing RNG can never cause the nonce to
@@ -340,9 +343,10 @@ int shim_ecdsa_recover(
     int compressed
 );
 
-/* --------------------------------------------------- Schnorr (BIP340) */
+/* -------------------------------------------------------- Schnorr signatures */
 
-// Unlike ECDSA, BIP340 signs a message of any length, hashing it internally.
+// Unlike ECDSA, a Schnorr signature is over a message of any length, hashed
+// internally.
 // aux_rand32 is optional auxiliary randomness; pass NULL to sign
 // deterministically.
 int shim_schnorr_sign(
@@ -373,24 +377,5 @@ int shim_ecdh(
     const unsigned char seckey32[SHIM_SECKEY_LEN],
     unsigned char output32[SHIM_SHARED_SECRET_LEN]
 );
-
-/* ------------------------------------------------------------------ misc */
-
-// SHA-256 with a BIP340 tag prefix: sha256(sha256(tag) || sha256(tag) || msg).
-// Taproot builds its tweaks out of these, and getting the tag domain separation
-// right matters, so it comes from the library rather than being reimplemented.
-int shim_tagged_sha256(
-    const secp256k1_context *ctx,
-    const unsigned char *tag,
-    size_t tag_len,
-    const unsigned char *msg,
-    size_t msg_len,
-    unsigned char output32[SHIM_HASH_LEN]
-);
-
-// Zeroes a buffer without the compiler optimizing the write away. Only useful
-// for scratch buffers living in C; secrets held in Go memory should be cleared
-// on the Go side.
-void shim_memzero(void *ptr, size_t len);
 
 #endif /* NINJA_SECP256K1_SHIM_H */

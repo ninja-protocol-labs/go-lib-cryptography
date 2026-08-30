@@ -65,6 +65,26 @@ package internal
 #cgo nocallback shim_ecdsa_sign_recoverable
 #cgo noescape shim_ecdsa_recover
 #cgo nocallback shim_ecdsa_recover
+#cgo noescape shim_xonly_pubkey_create
+#cgo nocallback shim_xonly_pubkey_create
+#cgo noescape shim_xonly_pubkey_verify
+#cgo nocallback shim_xonly_pubkey_verify
+#cgo noescape shim_xonly_pubkey_from_pubkey
+#cgo nocallback shim_xonly_pubkey_from_pubkey
+#cgo noescape shim_xonly_pubkey_cmp
+#cgo nocallback shim_xonly_pubkey_cmp
+#cgo noescape shim_xonly_pubkey_tweak_add
+#cgo nocallback shim_xonly_pubkey_tweak_add
+#cgo noescape shim_xonly_pubkey_tweak_add_check
+#cgo nocallback shim_xonly_pubkey_tweak_add_check
+#cgo noescape shim_seckey_xonly_tweak_add
+#cgo nocallback shim_seckey_xonly_tweak_add
+#cgo noescape shim_schnorr_sign
+#cgo nocallback shim_schnorr_sign
+#cgo noescape shim_schnorr_verify
+#cgo nocallback shim_schnorr_verify
+#cgo noescape shim_ecdh
+#cgo nocallback shim_ecdh
 
 #include "shim.h"
 */

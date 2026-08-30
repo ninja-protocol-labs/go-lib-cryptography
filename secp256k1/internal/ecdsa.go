@@ -126,8 +126,7 @@ func ECDSASignatureCompactToDER(sig *[SignatureCompactLen]byte) ([SignatureDERMa
 
 // ECDSASignRecoverable is ECDSASignCompact plus a recovery id: the extra
 // value that lets ECDSARecover reconstruct the signer's public key from the
-// signature and message alone, with no public key supplied. This is what
-// Ethereum's v/r/s and Bitcoin's message signing are built on.
+// signature and message alone, with no public key supplied.
 func ECDSASignRecoverable(msg *[MessageLen]byte, seckey *[SeckeyLen]byte) ([SignatureCompactLen]byte, int, bool) {
 	var sig [SignatureCompactLen]byte
 	var recID C.int
