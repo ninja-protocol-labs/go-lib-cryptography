@@ -228,11 +228,21 @@ int shim_seckey_xonly_tweak_add(
 // msg32 is always a hash, never a raw message: ECDSA signs a 32-byte digest.
 // Signatures come out low-S normalized, which is what Bitcoin and Ethereum
 // require.
+//
+// The nonce is derived deterministically from msg32 and seckey32 (RFC 6979),
+// never drawn from randomness, so a failing RNG can never cause the nonce to
+// repeat and leak the key. aux_rand32 is optional extra entropy folded into
+// that derivation for defense in depth against fault attacks; pass NULL for
+// pure RFC 6979, or 32 bytes from any source (it need not be secret or even
+// unpredictable) to make repeated signatures over the same input unlinkable.
+// Either way the signature stays deterministic-safe: this is "hedged"
+// signing, not a return to classic random-k ECDSA.
 
 int shim_ecdsa_sign_compact(
     const secp256k1_context *ctx,
     const unsigned char msg32[SHIM_MESSAGE_LEN],
     const unsigned char seckey32[SHIM_SECKEY_LEN],
+    const unsigned char *aux_rand32,
     unsigned char output64[SHIM_SIGNATURE_COMPACT_LEN]
 );
 

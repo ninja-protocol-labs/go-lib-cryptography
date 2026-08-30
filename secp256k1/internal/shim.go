@@ -25,6 +25,14 @@ package internal
 #cgo nocallback shim_context_create
 #cgo noescape shim_seckey_verify
 #cgo nocallback shim_seckey_verify
+#cgo noescape shim_pubkey_create
+#cgo nocallback shim_pubkey_create
+#cgo noescape shim_pubkey_parse
+#cgo nocallback shim_pubkey_parse
+#cgo noescape shim_ecdsa_sign_compact
+#cgo nocallback shim_ecdsa_sign_compact
+#cgo noescape shim_ecdsa_verify_compact
+#cgo nocallback shim_ecdsa_verify_compact
 
 #include "shim.h"
 */
