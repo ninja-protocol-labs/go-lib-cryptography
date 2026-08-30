@@ -45,7 +45,7 @@ const (
 
 // PrivateKey is an Ed25519 seed.
 type PrivateKey struct {
-	seed [SeckeyLen]byte
+	key [SeckeyLen]byte
 }
 
 // GeneratePrivateKey draws a random private key.
@@ -57,7 +57,7 @@ func GeneratePrivateKey() (*PrivateKey, error) {
 	var seed [SeckeyLen]byte
 	copy(seed[:], priv.Seed())
 	return &PrivateKey{
-		seed: seed,
+		key: seed,
 	}, nil
 }
 
@@ -71,7 +71,7 @@ func PrivateKeyFromBytes(b []byte) (*PrivateKey, error) {
 	var seed [SeckeyLen]byte
 	copy(seed[:], b)
 	return &PrivateKey{
-		seed: seed,
+		key: seed,
 	}, nil
 }
 
@@ -79,14 +79,14 @@ func PrivateKeyFromBytes(b []byte) (*PrivateKey, error) {
 // it does not affect k.
 func (k *PrivateKey) Bytes() []byte {
 	out := make([]byte, SeckeyLen)
-	copy(out, k.seed[:])
+	copy(out, k.key[:])
 	return out
 }
 
 // expand recomputes stdlib's 64-byte (seed || public key) form from k's
 // seed, for handing to crypto/ed25519's signing functions.
 func (k *PrivateKey) expand() ed.PrivateKey {
-	return ed.NewKeyFromSeed(k.seed[:])
+	return ed.NewKeyFromSeed(k.key[:])
 }
 
 // PublicKey derives the public key corresponding to k. Unlike
@@ -107,7 +107,7 @@ func (k *PrivateKey) Equal(other *PrivateKey) bool {
 	if other == nil {
 		return false
 	}
-	return k.seed == other.seed
+	return k.key == other.key
 }
 
 // PublicKey is an Ed25519 public key.
