@@ -5,7 +5,9 @@
 
 #include "secp256k1.h"
 #include "secp256k1_ecdh.h"
+#include "secp256k1_ellswift.h"
 #include "secp256k1_extrakeys.h"
+#include "secp256k1_musig.h"
 #include "secp256k1_recovery.h"
 #include "secp256k1_schnorrsig.h"
 
@@ -38,6 +40,7 @@
 #define SHIM_SHARED_SECRET_LEN 32
 #define SHIM_TWEAK_LEN 32
 #define SHIM_HASH_LEN 32
+#define SHIM_ELLSWIFT_LEN 64
 
 // shim_pubkey_combine and shim_pubkey_sort take their keys as a caller-owned
 // stack array sized against this, rather than allocating: a cap high enough
@@ -376,6 +379,56 @@ int shim_ecdh(
     size_t pubkey_len,
     const unsigned char seckey32[SHIM_SECKEY_LEN],
     unsigned char output32[SHIM_SHARED_SECRET_LEN]
+);
+
+/* ------------------------------------------------------------ ElligatorSwift */
+
+// ElligatorSwift encodes a curve point as 64 bytes indistinguishable from
+// uniform randomness, unlike the compressed/uncompressed forms which are
+// always identifiable as a public key on the wire. Decoding recovers a
+// regular point.
+
+// rnd32 supplies the randomness used to pick among the encoding's several
+// valid representations for the same point; the encoding itself is not
+// stable even for identical inputs across library versions.
+int shim_ellswift_encode(
+    const secp256k1_context *ctx,
+    const unsigned char *pubkey,
+    size_t pubkey_len,
+    const unsigned char rnd32[32],
+    unsigned char output64[SHIM_ELLSWIFT_LEN]
+);
+
+int shim_ellswift_decode(
+    const secp256k1_context *ctx,
+    const unsigned char input64[SHIM_ELLSWIFT_LEN],
+    unsigned char *output,
+    size_t *output_len,
+    int compressed
+);
+
+// Derives the ElligatorSwift encoding directly from seckey32, without a
+// separate pubkey-create step. aux_rand32 is optional extra entropy for the
+// encoding (not for the key itself); pass NULL to omit it.
+int shim_ellswift_create(
+    const secp256k1_context *ctx,
+    const unsigned char seckey32[SHIM_SECKEY_LEN],
+    const unsigned char *aux_rand32,
+    unsigned char output64[SHIM_ELLSWIFT_LEN]
+);
+
+// x-only Diffie-Hellman between two ElligatorSwift-encoded points: computes
+// the shared secret as SHA-256(ell_a64 || ell_b64 || x), x being the shared
+// point's x coordinate. ell_a64 and ell_b64 are fixed roles, not peer/own —
+// party selects which one seckey32 corresponds to (0 for A, 1 for B), and
+// that correspondence is the caller's responsibility; it is not checked.
+int shim_ellswift_xdh(
+    const secp256k1_context *ctx,
+    const unsigned char ell_a64[SHIM_ELLSWIFT_LEN],
+    const unsigned char ell_b64[SHIM_ELLSWIFT_LEN],
+    const unsigned char seckey32[SHIM_SECKEY_LEN],
+    int party,
+    unsigned char output32[SHIM_HASH_LEN]
 );
 
 #endif /* NINJA_SECP256K1_SHIM_H */

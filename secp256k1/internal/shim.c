@@ -648,3 +648,67 @@ int shim_ecdh(
     // contract.
     return secp256k1_ecdh(ctx, output32, &parsed, seckey32, NULL, NULL);
 }
+
+/* ------------------------------------------------------------ ElligatorSwift */
+
+int shim_ellswift_encode(
+    const secp256k1_context *ctx,
+    const unsigned char *pubkey,
+    size_t pubkey_len,
+    const unsigned char rnd32[32],
+    unsigned char output64[SHIM_ELLSWIFT_LEN]
+) {
+    secp256k1_pubkey parsed;
+
+    if (!secp256k1_ec_pubkey_parse(ctx, &parsed, pubkey, pubkey_len)) {
+        return 0;
+    }
+
+    return secp256k1_ellswift_encode(ctx, output64, &parsed, rnd32);
+}
+
+int shim_ellswift_decode(
+    const secp256k1_context *ctx,
+    const unsigned char input64[SHIM_ELLSWIFT_LEN],
+    unsigned char *output,
+    size_t *output_len,
+    int compressed
+) {
+    secp256k1_pubkey pubkey;
+    unsigned int flags = compressed ? SECP256K1_EC_COMPRESSED : SECP256K1_EC_UNCOMPRESSED;
+
+    // secp256k1_ellswift_decode always returns 1: any 64 bytes decode to some
+    // valid point.
+    secp256k1_ellswift_decode(ctx, &pubkey, input64);
+
+    return secp256k1_ec_pubkey_serialize(ctx, output, output_len, &pubkey, flags);
+}
+
+int shim_ellswift_create(
+    const secp256k1_context *ctx,
+    const unsigned char seckey32[SHIM_SECKEY_LEN],
+    const unsigned char *aux_rand32,
+    unsigned char output64[SHIM_ELLSWIFT_LEN]
+) {
+    return secp256k1_ellswift_create(ctx, output64, seckey32, aux_rand32);
+}
+
+int shim_ellswift_xdh(
+    const secp256k1_context *ctx,
+    const unsigned char ell_a64[SHIM_ELLSWIFT_LEN],
+    const unsigned char ell_b64[SHIM_ELLSWIFT_LEN],
+    const unsigned char seckey32[SHIM_SECKEY_LEN],
+    int party,
+    unsigned char output32[SHIM_HASH_LEN]
+) {
+    // The prefix hash function unconditionally reads 64 bytes from data, so a
+    // NULL data pointer here would be undefined behavior, not "no prefix" —
+    // an all-zero 64-byte prefix is the actual no-prefix case, reducing this
+    // to plain SHA256(ell_a64 || ell_b64 || x), matching shim_ecdh's choice
+    // of a fixed, library-provided hash over rolling a custom one.
+    unsigned char zero_prefix[64] = {0};
+    return secp256k1_ellswift_xdh(
+        ctx, output32, ell_a64, ell_b64, seckey32, party,
+        secp256k1_ellswift_xdh_hash_function_prefix, zero_prefix
+    );
+}

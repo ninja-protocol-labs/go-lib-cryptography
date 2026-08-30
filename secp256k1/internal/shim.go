@@ -14,6 +14,8 @@ package internal
 #cgo CFLAGS: -DENABLE_MODULE_EXTRAKEYS=1
 #cgo CFLAGS: -DENABLE_MODULE_SCHNORRSIG=1
 #cgo CFLAGS: -DENABLE_MODULE_RECOVERY=1
+#cgo CFLAGS: -DENABLE_MODULE_ELLSWIFT=1
+#cgo CFLAGS: -DENABLE_MODULE_MUSIG=1
 #cgo CFLAGS: -DECMULT_WINDOW_SIZE=15
 #cgo CFLAGS: -DECMULT_GEN_PREC_BITS=4
 
@@ -85,6 +87,14 @@ package internal
 #cgo nocallback shim_schnorr_verify
 #cgo noescape shim_ecdh
 #cgo nocallback shim_ecdh
+#cgo noescape shim_ellswift_encode
+#cgo nocallback shim_ellswift_encode
+#cgo noescape shim_ellswift_decode
+#cgo nocallback shim_ellswift_decode
+#cgo noescape shim_ellswift_create
+#cgo nocallback shim_ellswift_create
+#cgo noescape shim_ellswift_xdh
+#cgo nocallback shim_ellswift_xdh
 
 #include "shim.h"
 */
@@ -103,4 +113,5 @@ const (
 	TweakLen              = C.SHIM_TWEAK_LEN
 	HashLen               = C.SHIM_HASH_LEN
 	MaxCombinePubkeys     = C.SHIM_MAX_COMBINE_PUBKEYS
+	EllswiftLen           = C.SHIM_ELLSWIFT_LEN
 )
