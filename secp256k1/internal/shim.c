@@ -712,3 +712,97 @@ int shim_ellswift_xdh(
         secp256k1_ellswift_xdh_hash_function_prefix, zero_prefix
     );
 }
+
+/* --------------------------------------------------------- MuSig2 key agg */
+
+// secp256k1_musig_keyagg_cache (and the other MuSig opaque types) are, in the
+// vendored source, a struct wrapping nothing but a fixed unsigned char array.
+// Casting the raw buffer this shim receives to that struct type is exactly
+// the identity conversion the struct's own layout guarantees — not a
+// reinterpretation across incompatible types — so it carries no aliasing
+// hazard.
+#define SHIM_MUSIG_KEYAGG_CACHE(buf) ((secp256k1_musig_keyagg_cache *)(void *)(buf))
+
+int shim_musig_pubkey_agg(
+    const secp256k1_context *ctx,
+    const unsigned char *pubkeys,
+    size_t pubkey_count,
+    unsigned char agg_pk32[SHIM_XONLY_PUBKEY_LEN],
+    unsigned char keyagg_cache[SHIM_MUSIG_KEYAGG_CACHE_LEN]
+) {
+    secp256k1_pubkey parsed[SHIM_MAX_COMBINE_PUBKEYS];
+    const secp256k1_pubkey *ins[SHIM_MAX_COMBINE_PUBKEYS];
+    secp256k1_xonly_pubkey agg_pk;
+    size_t i;
+
+    if (pubkey_count == 0 || pubkey_count > SHIM_MAX_COMBINE_PUBKEYS) {
+        return 0;
+    }
+
+    for (i = 0; i < pubkey_count; i++) {
+        const unsigned char *key = pubkeys + (i * SHIM_PUBKEY_COMPRESSED_LEN);
+        if (!secp256k1_ec_pubkey_parse(ctx, &parsed[i], key, SHIM_PUBKEY_COMPRESSED_LEN)) {
+            return 0;
+        }
+        ins[i] = &parsed[i];
+    }
+
+    if (!secp256k1_musig_pubkey_agg(ctx, &agg_pk, SHIM_MUSIG_KEYAGG_CACHE(keyagg_cache), ins, pubkey_count)) {
+        return 0;
+    }
+
+    return secp256k1_xonly_pubkey_serialize(ctx, agg_pk32, &agg_pk);
+}
+
+int shim_musig_pubkey_get(
+    const secp256k1_context *ctx,
+    const unsigned char keyagg_cache[SHIM_MUSIG_KEYAGG_CACHE_LEN],
+    unsigned char *output,
+    size_t *output_len,
+    int compressed
+) {
+    secp256k1_pubkey agg_pk;
+    unsigned int flags = compressed ? SECP256K1_EC_COMPRESSED : SECP256K1_EC_UNCOMPRESSED;
+
+    if (!secp256k1_musig_pubkey_get(ctx, &agg_pk, SHIM_MUSIG_KEYAGG_CACHE(keyagg_cache))) {
+        return 0;
+    }
+
+    return secp256k1_ec_pubkey_serialize(ctx, output, output_len, &agg_pk, flags);
+}
+
+int shim_musig_pubkey_ec_tweak_add(
+    const secp256k1_context *ctx,
+    unsigned char keyagg_cache[SHIM_MUSIG_KEYAGG_CACHE_LEN],
+    const unsigned char tweak32[SHIM_TWEAK_LEN],
+    unsigned char *output,
+    size_t *output_len,
+    int compressed
+) {
+    secp256k1_pubkey tweaked;
+    unsigned int flags = compressed ? SECP256K1_EC_COMPRESSED : SECP256K1_EC_UNCOMPRESSED;
+
+    if (!secp256k1_musig_pubkey_ec_tweak_add(ctx, &tweaked, SHIM_MUSIG_KEYAGG_CACHE(keyagg_cache), tweak32)) {
+        return 0;
+    }
+
+    return secp256k1_ec_pubkey_serialize(ctx, output, output_len, &tweaked, flags);
+}
+
+int shim_musig_pubkey_xonly_tweak_add(
+    const secp256k1_context *ctx,
+    unsigned char keyagg_cache[SHIM_MUSIG_KEYAGG_CACHE_LEN],
+    const unsigned char tweak32[SHIM_TWEAK_LEN],
+    unsigned char *output,
+    size_t *output_len,
+    int compressed
+) {
+    secp256k1_pubkey tweaked;
+    unsigned int flags = compressed ? SECP256K1_EC_COMPRESSED : SECP256K1_EC_UNCOMPRESSED;
+
+    if (!secp256k1_musig_pubkey_xonly_tweak_add(ctx, &tweaked, SHIM_MUSIG_KEYAGG_CACHE(keyagg_cache), tweak32)) {
+        return 0;
+    }
+
+    return secp256k1_ec_pubkey_serialize(ctx, output, output_len, &tweaked, flags);
+}

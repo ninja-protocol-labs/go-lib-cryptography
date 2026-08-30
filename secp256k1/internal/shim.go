@@ -95,6 +95,14 @@ package internal
 #cgo nocallback shim_ellswift_create
 #cgo noescape shim_ellswift_xdh
 #cgo nocallback shim_ellswift_xdh
+#cgo noescape shim_musig_pubkey_agg
+#cgo nocallback shim_musig_pubkey_agg
+#cgo noescape shim_musig_pubkey_get
+#cgo nocallback shim_musig_pubkey_get
+#cgo noescape shim_musig_pubkey_ec_tweak_add
+#cgo nocallback shim_musig_pubkey_ec_tweak_add
+#cgo noescape shim_musig_pubkey_xonly_tweak_add
+#cgo nocallback shim_musig_pubkey_xonly_tweak_add
 
 #include "shim.h"
 */
@@ -114,4 +122,14 @@ const (
 	HashLen               = C.SHIM_HASH_LEN
 	MaxCombinePubkeys     = C.SHIM_MAX_COMBINE_PUBKEYS
 	EllswiftLen           = C.SHIM_ELLSWIFT_LEN
+
+	MusigKeyaggCacheLen          = C.SHIM_MUSIG_KEYAGG_CACHE_LEN
+	MusigSecnonceLen             = C.SHIM_MUSIG_SECNONCE_LEN
+	MusigPubnonceLen             = C.SHIM_MUSIG_PUBNONCE_LEN
+	MusigPubnonceSerializedLen   = C.SHIM_MUSIG_PUBNONCE_SERIALIZED_LEN
+	MusigAggnonceLen             = C.SHIM_MUSIG_AGGNONCE_LEN
+	MusigAggnonceSerializedLen   = C.SHIM_MUSIG_AGGNONCE_SERIALIZED_LEN
+	MusigSessionLen              = C.SHIM_MUSIG_SESSION_LEN
+	MusigPartialSigLen           = C.SHIM_MUSIG_PARTIAL_SIG_LEN
+	MusigPartialSigSerializedLen = C.SHIM_MUSIG_PARTIAL_SIG_SERIALIZED_LEN
 )

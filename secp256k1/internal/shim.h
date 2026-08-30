@@ -42,6 +42,27 @@
 #define SHIM_HASH_LEN 32
 #define SHIM_ELLSWIFT_LEN 64
 
+// MuSig2 opaque state sizes. Each of these is, upstream, a struct wrapping
+// nothing but a fixed byte array with no internal pointers — so unlike
+// secp256k1_pubkey or secp256k1_keypair (which never leave shim.c), a plain
+// [N]byte on the Go side has identical layout and can be round-tripped
+// through a session's multiple calls, and across signers, unchanged.
+//
+// secnonce is the one exception the size table doesn't capture: upstream
+// warns it must never be copied or reused once consumed by a signing call,
+// on pain of leaking the secret key. It is safe to carry as a byte array
+// between shim_musig_nonce_gen and shim_musig_partial_sign — just never
+// duplicate or persist it beyond that single use.
+#define SHIM_MUSIG_KEYAGG_CACHE_LEN 197
+#define SHIM_MUSIG_SECNONCE_LEN 132
+#define SHIM_MUSIG_PUBNONCE_LEN 132
+#define SHIM_MUSIG_PUBNONCE_SERIALIZED_LEN 66
+#define SHIM_MUSIG_AGGNONCE_LEN 132
+#define SHIM_MUSIG_AGGNONCE_SERIALIZED_LEN 66
+#define SHIM_MUSIG_SESSION_LEN 133
+#define SHIM_MUSIG_PARTIAL_SIG_LEN 36
+#define SHIM_MUSIG_PARTIAL_SIG_SERIALIZED_LEN 32
+
 // shim_pubkey_combine and shim_pubkey_sort take their keys as a caller-owned
 // stack array sized against this, rather than allocating: a cap high enough
 // for any real key-aggregation scheme, low enough that even the maximum
@@ -429,6 +450,60 @@ int shim_ellswift_xdh(
     const unsigned char seckey32[SHIM_SECKEY_LEN],
     int party,
     unsigned char output32[SHIM_HASH_LEN]
+);
+
+/* --------------------------------------------------------- MuSig2 key agg */
+
+// Aggregates pubkey_count public keys into a single x-only key, and
+// initializes keyagg_cache — required for every later step in the same
+// session (nonce generation, tweaking, signing, verification). Key order
+// changes the result; sort the inputs with shim_pubkey_sort first if the
+// aggregate must not depend on it. Shares SHIM_MAX_COMBINE_PUBKEYS with
+// shim_pubkey_combine for the same reason: a fixed stack array instead of an
+// allocation or an unbounded VLA.
+int shim_musig_pubkey_agg(
+    const secp256k1_context *ctx,
+    const unsigned char *pubkeys,
+    size_t pubkey_count,
+    unsigned char agg_pk32[SHIM_XONLY_PUBKEY_LEN],
+    unsigned char keyagg_cache[SHIM_MUSIG_KEYAGG_CACHE_LEN]
+);
+
+// Recovers the full (non-x-only) aggregate key from keyagg_cache. Needed
+// before shim_musig_pubkey_ec_tweak_add, which tweaks the full point rather
+// than the x-only one.
+int shim_musig_pubkey_get(
+    const secp256k1_context *ctx,
+    const unsigned char keyagg_cache[SHIM_MUSIG_KEYAGG_CACHE_LEN],
+    unsigned char *output,
+    size_t *output_len,
+    int compressed
+);
+
+// Tweaks the aggregate key in keyagg_cache by adding tweak32*G to the full
+// point, mutating keyagg_cache in place so that later signing in this
+// session produces a signature valid for the tweaked key. Use this over a
+// plain shim_pubkey_tweak_add whenever the tweaked key will be signed for,
+// not just computed.
+int shim_musig_pubkey_ec_tweak_add(
+    const secp256k1_context *ctx,
+    unsigned char keyagg_cache[SHIM_MUSIG_KEYAGG_CACHE_LEN],
+    const unsigned char tweak32[SHIM_TWEAK_LEN],
+    unsigned char *output,
+    size_t *output_len,
+    int compressed
+);
+
+// Tweaks the aggregate key in keyagg_cache the way shim_xonly_pubkey_tweak_add
+// tweaks a standalone x-only key, mutating keyagg_cache in place. Same
+// sign-for-the-tweaked-key requirement as shim_musig_pubkey_ec_tweak_add.
+int shim_musig_pubkey_xonly_tweak_add(
+    const secp256k1_context *ctx,
+    unsigned char keyagg_cache[SHIM_MUSIG_KEYAGG_CACHE_LEN],
+    const unsigned char tweak32[SHIM_TWEAK_LEN],
+    unsigned char *output,
+    size_t *output_len,
+    int compressed
 );
 
 #endif /* NINJA_SECP256K1_SHIM_H */
