@@ -6,17 +6,38 @@
 // function, and keeps libsecp256k1's internal macros out of this translation
 // unit.
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "shim.h"
 
 /* ---------------------------------------------------------------- context */
 
+// libsecp256k1's ARG_CHECK macro — used throughout the library to reject
+// caller misuse, including entirely recoverable cases like signing with an
+// already-consumed MuSig secnonce — is documented as returning 0, but that is
+// only true once its illegal_callback has run. The library's own default
+// callback logs the message and then calls abort(), which never lets that
+// return 0 execute: it kills the calling process outright over what the API
+// itself calls a normal, checkable failure.
+//
+// A library has no business doing that to its caller. This callback keeps
+// the same stderr diagnostic for visibility during development, but drops
+// the abort so every ARG_CHECK-guarded function actually reaches its
+// documented `return 0` instead.
+static void shim_illegal_callback(const char *message, void *data) {
+    (void)data;
+    fprintf(stderr, "[secp256k1 shim] rejected illegal argument: %s\n", message);
+}
+
 secp256k1_context *shim_context_create(const unsigned char *seed32) {
     secp256k1_context *ctx = secp256k1_context_create(SECP256K1_CONTEXT_NONE);
     if (ctx == NULL) {
         return NULL;
     }
+
+    secp256k1_context_set_illegal_callback(ctx, shim_illegal_callback, NULL);
 
     // Randomization blinds the scalar multiplications against side-channel
     // attacks. It is optional upstream, so a NULL seed is a valid request to
@@ -715,13 +736,12 @@ int shim_ellswift_xdh(
 
 /* --------------------------------------------------------- MuSig2 key agg */
 
-// secp256k1_musig_keyagg_cache (and the other MuSig opaque types) are, in the
-// vendored source, a struct wrapping nothing but a fixed unsigned char array.
-// Casting the raw buffer this shim receives to that struct type is exactly
-// the identity conversion the struct's own layout guarantees — not a
+// secp256k1_musig_keyagg_cache (and the other MuSig opaque types below) are,
+// in the vendored source, a struct wrapping nothing but a fixed unsigned char
+// array. Casting the raw buffer this shim receives to that struct type is
+// exactly the identity conversion the struct's own layout guarantees — not a
 // reinterpretation across incompatible types — so it carries no aliasing
 // hazard.
-#define SHIM_MUSIG_KEYAGG_CACHE(buf) ((secp256k1_musig_keyagg_cache *)(void *)(buf))
 
 int shim_musig_pubkey_agg(
     const secp256k1_context *ctx,
@@ -747,7 +767,7 @@ int shim_musig_pubkey_agg(
         ins[i] = &parsed[i];
     }
 
-    if (!secp256k1_musig_pubkey_agg(ctx, &agg_pk, SHIM_MUSIG_KEYAGG_CACHE(keyagg_cache), ins, pubkey_count)) {
+    if (!secp256k1_musig_pubkey_agg(ctx, &agg_pk, (secp256k1_musig_keyagg_cache *)(void *)keyagg_cache, ins, pubkey_count)) {
         return 0;
     }
 
@@ -764,7 +784,7 @@ int shim_musig_pubkey_get(
     secp256k1_pubkey agg_pk;
     unsigned int flags = compressed ? SECP256K1_EC_COMPRESSED : SECP256K1_EC_UNCOMPRESSED;
 
-    if (!secp256k1_musig_pubkey_get(ctx, &agg_pk, SHIM_MUSIG_KEYAGG_CACHE(keyagg_cache))) {
+    if (!secp256k1_musig_pubkey_get(ctx, &agg_pk, (secp256k1_musig_keyagg_cache *)(void *)keyagg_cache)) {
         return 0;
     }
 
@@ -782,7 +802,7 @@ int shim_musig_pubkey_ec_tweak_add(
     secp256k1_pubkey tweaked;
     unsigned int flags = compressed ? SECP256K1_EC_COMPRESSED : SECP256K1_EC_UNCOMPRESSED;
 
-    if (!secp256k1_musig_pubkey_ec_tweak_add(ctx, &tweaked, SHIM_MUSIG_KEYAGG_CACHE(keyagg_cache), tweak32)) {
+    if (!secp256k1_musig_pubkey_ec_tweak_add(ctx, &tweaked, (secp256k1_musig_keyagg_cache *)(void *)keyagg_cache, tweak32)) {
         return 0;
     }
 
@@ -800,9 +820,241 @@ int shim_musig_pubkey_xonly_tweak_add(
     secp256k1_pubkey tweaked;
     unsigned int flags = compressed ? SECP256K1_EC_COMPRESSED : SECP256K1_EC_UNCOMPRESSED;
 
-    if (!secp256k1_musig_pubkey_xonly_tweak_add(ctx, &tweaked, SHIM_MUSIG_KEYAGG_CACHE(keyagg_cache), tweak32)) {
+    if (!secp256k1_musig_pubkey_xonly_tweak_add(ctx, &tweaked, (secp256k1_musig_keyagg_cache *)(void *)keyagg_cache, tweak32)) {
         return 0;
     }
 
     return secp256k1_ec_pubkey_serialize(ctx, output, output_len, &tweaked, flags);
+}
+
+/* ------------------------------------------------------- MuSig2 nonce gen */
+
+int shim_musig_nonce_gen(
+    const secp256k1_context *ctx,
+    unsigned char session_secrand32[32],
+    const unsigned char *seckey32,
+    const unsigned char *pubkey,
+    size_t pubkey_len,
+    const unsigned char *msg32,
+    const unsigned char *keyagg_cache,
+    const unsigned char *extra_input32,
+    unsigned char secnonce[SHIM_MUSIG_SECNONCE_LEN],
+    unsigned char pubnonce[SHIM_MUSIG_PUBNONCE_LEN]
+) {
+    secp256k1_pubkey parsed_pubkey;
+
+    if (!secp256k1_ec_pubkey_parse(ctx, &parsed_pubkey, pubkey, pubkey_len)) {
+        return 0;
+    }
+
+    return secp256k1_musig_nonce_gen(
+        ctx,
+        (secp256k1_musig_secnonce *)(void *)secnonce,
+        (secp256k1_musig_pubnonce *)(void *)pubnonce,
+        session_secrand32,
+        seckey32,
+        &parsed_pubkey,
+        msg32,
+        keyagg_cache ? (const secp256k1_musig_keyagg_cache *)(const void *)keyagg_cache : NULL,
+        extra_input32
+    );
+}
+
+int shim_musig_nonce_gen_counter(
+    const secp256k1_context *ctx,
+    const unsigned char seckey32[SHIM_SECKEY_LEN],
+    uint64_t nonrepeating_cnt,
+    const unsigned char *msg32,
+    const unsigned char *keyagg_cache,
+    const unsigned char *extra_input32,
+    unsigned char secnonce[SHIM_MUSIG_SECNONCE_LEN],
+    unsigned char pubnonce[SHIM_MUSIG_PUBNONCE_LEN]
+) {
+    secp256k1_keypair keypair;
+
+    if (!secp256k1_keypair_create(ctx, &keypair, seckey32)) {
+        return 0;
+    }
+
+    return secp256k1_musig_nonce_gen_counter(
+        ctx,
+        (secp256k1_musig_secnonce *)(void *)secnonce,
+        (secp256k1_musig_pubnonce *)(void *)pubnonce,
+        nonrepeating_cnt,
+        &keypair,
+        msg32,
+        keyagg_cache ? (const secp256k1_musig_keyagg_cache *)(const void *)keyagg_cache : NULL,
+        extra_input32
+    );
+}
+
+/* --------------------------------------------- MuSig2 nonce exchange/agg */
+
+int shim_musig_pubnonce_parse(
+    const secp256k1_context *ctx,
+    const unsigned char input66[SHIM_MUSIG_PUBNONCE_SERIALIZED_LEN],
+    unsigned char pubnonce[SHIM_MUSIG_PUBNONCE_LEN]
+) {
+    return secp256k1_musig_pubnonce_parse(ctx, (secp256k1_musig_pubnonce *)(void *)pubnonce, input66);
+}
+
+int shim_musig_pubnonce_serialize(
+    const secp256k1_context *ctx,
+    const unsigned char pubnonce[SHIM_MUSIG_PUBNONCE_LEN],
+    unsigned char output66[SHIM_MUSIG_PUBNONCE_SERIALIZED_LEN]
+) {
+    return secp256k1_musig_pubnonce_serialize(ctx, output66, (const secp256k1_musig_pubnonce *)(const void *)pubnonce);
+}
+
+int shim_musig_aggnonce_parse(
+    const secp256k1_context *ctx,
+    const unsigned char input66[SHIM_MUSIG_AGGNONCE_SERIALIZED_LEN],
+    unsigned char aggnonce[SHIM_MUSIG_AGGNONCE_LEN]
+) {
+    return secp256k1_musig_aggnonce_parse(ctx, (secp256k1_musig_aggnonce *)(void *)aggnonce, input66);
+}
+
+int shim_musig_aggnonce_serialize(
+    const secp256k1_context *ctx,
+    const unsigned char aggnonce[SHIM_MUSIG_AGGNONCE_LEN],
+    unsigned char output66[SHIM_MUSIG_AGGNONCE_SERIALIZED_LEN]
+) {
+    return secp256k1_musig_aggnonce_serialize(ctx, output66, (const secp256k1_musig_aggnonce *)(const void *)aggnonce);
+}
+
+int shim_musig_nonce_agg(
+    const secp256k1_context *ctx,
+    const unsigned char *pubnonces,
+    size_t pubnonce_count,
+    unsigned char aggnonce[SHIM_MUSIG_AGGNONCE_LEN]
+) {
+    const secp256k1_musig_pubnonce *ins[SHIM_MAX_COMBINE_PUBKEYS];
+    size_t i;
+
+    if (pubnonce_count == 0 || pubnonce_count > SHIM_MAX_COMBINE_PUBKEYS) {
+        return 0;
+    }
+
+    for (i = 0; i < pubnonce_count; i++) {
+        const unsigned char *nonce = pubnonces + (i * SHIM_MUSIG_PUBNONCE_LEN);
+        ins[i] = (const secp256k1_musig_pubnonce *)(const void *)nonce;
+    }
+
+    return secp256k1_musig_nonce_agg(ctx, (secp256k1_musig_aggnonce *)(void *)aggnonce, ins, pubnonce_count);
+}
+
+int shim_musig_nonce_process(
+    const secp256k1_context *ctx,
+    const unsigned char aggnonce[SHIM_MUSIG_AGGNONCE_LEN],
+    const unsigned char msg32[SHIM_MESSAGE_LEN],
+    const unsigned char keyagg_cache[SHIM_MUSIG_KEYAGG_CACHE_LEN],
+    unsigned char session[SHIM_MUSIG_SESSION_LEN]
+) {
+    return secp256k1_musig_nonce_process(
+        ctx,
+        (secp256k1_musig_session *)(void *)session,
+        (const secp256k1_musig_aggnonce *)(const void *)aggnonce,
+        msg32,
+        (const secp256k1_musig_keyagg_cache *)(const void *)keyagg_cache
+    );
+}
+
+/* ----------------------------------------------------- MuSig2 partial sig */
+
+int shim_musig_partial_sig_parse(
+    const secp256k1_context *ctx,
+    const unsigned char input32[SHIM_MUSIG_PARTIAL_SIG_SERIALIZED_LEN],
+    unsigned char partial_sig[SHIM_MUSIG_PARTIAL_SIG_LEN]
+) {
+    return secp256k1_musig_partial_sig_parse(ctx, (secp256k1_musig_partial_sig *)(void *)partial_sig, input32);
+}
+
+int shim_musig_partial_sig_serialize(
+    const secp256k1_context *ctx,
+    const unsigned char partial_sig[SHIM_MUSIG_PARTIAL_SIG_LEN],
+    unsigned char output32[SHIM_MUSIG_PARTIAL_SIG_SERIALIZED_LEN]
+) {
+    return secp256k1_musig_partial_sig_serialize(ctx, output32, (const secp256k1_musig_partial_sig *)(const void *)partial_sig);
+}
+
+int shim_musig_partial_sign(
+    const secp256k1_context *ctx,
+    unsigned char secnonce[SHIM_MUSIG_SECNONCE_LEN],
+    const unsigned char seckey32[SHIM_SECKEY_LEN],
+    const unsigned char keyagg_cache[SHIM_MUSIG_KEYAGG_CACHE_LEN],
+    const unsigned char session[SHIM_MUSIG_SESSION_LEN],
+    unsigned char partial_sig[SHIM_MUSIG_PARTIAL_SIG_LEN]
+) {
+    secp256k1_keypair keypair;
+
+    if (!secp256k1_keypair_create(ctx, &keypair, seckey32)) {
+        return 0;
+    }
+
+    // Like shim_musig_nonce_gen writing directly into the caller's
+    // secnonce/pubnonce buffers, this writes the partial signature's
+    // internal representation straight into partial_sig — not the 32-byte
+    // wire form, which shim_musig_partial_sig_serialize produces separately
+    // when a caller actually needs to send it somewhere.
+    return secp256k1_musig_partial_sign(
+        ctx,
+        (secp256k1_musig_partial_sig *)(void *)partial_sig,
+        (secp256k1_musig_secnonce *)(void *)secnonce,
+        &keypair,
+        (const secp256k1_musig_keyagg_cache *)(const void *)keyagg_cache,
+        (const secp256k1_musig_session *)(const void *)session
+    );
+}
+
+int shim_musig_partial_sig_verify(
+    const secp256k1_context *ctx,
+    const unsigned char partial_sig[SHIM_MUSIG_PARTIAL_SIG_LEN],
+    const unsigned char pubnonce[SHIM_MUSIG_PUBNONCE_LEN],
+    const unsigned char *pubkey,
+    size_t pubkey_len,
+    const unsigned char keyagg_cache[SHIM_MUSIG_KEYAGG_CACHE_LEN],
+    const unsigned char session[SHIM_MUSIG_SESSION_LEN]
+) {
+    secp256k1_pubkey parsed_pubkey;
+
+    if (!secp256k1_ec_pubkey_parse(ctx, &parsed_pubkey, pubkey, pubkey_len)) {
+        return 0;
+    }
+
+    return secp256k1_musig_partial_sig_verify(
+        ctx,
+        (const secp256k1_musig_partial_sig *)(const void *)partial_sig,
+        (const secp256k1_musig_pubnonce *)(const void *)pubnonce,
+        &parsed_pubkey,
+        (const secp256k1_musig_keyagg_cache *)(const void *)keyagg_cache,
+        (const secp256k1_musig_session *)(const void *)session
+    );
+}
+
+int shim_musig_partial_sig_agg(
+    const secp256k1_context *ctx,
+    const unsigned char session[SHIM_MUSIG_SESSION_LEN],
+    const unsigned char *partial_sigs,
+    size_t partial_sig_count,
+    unsigned char sig64[SHIM_SIGNATURE_COMPACT_LEN]
+) {
+    const secp256k1_musig_partial_sig *ins[SHIM_MAX_COMBINE_PUBKEYS];
+    size_t i;
+
+    if (partial_sig_count == 0 || partial_sig_count > SHIM_MAX_COMBINE_PUBKEYS) {
+        return 0;
+    }
+
+    for (i = 0; i < partial_sig_count; i++) {
+        const unsigned char *sig = partial_sigs + (i * SHIM_MUSIG_PARTIAL_SIG_LEN);
+        ins[i] = (const secp256k1_musig_partial_sig *)(const void *)sig;
+    }
+
+    return secp256k1_musig_partial_sig_agg(
+        ctx,
+        sig64,
+        (const secp256k1_musig_session *)(const void *)session,
+        ins,
+        partial_sig_count
+    );
 }

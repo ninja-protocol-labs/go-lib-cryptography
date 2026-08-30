@@ -340,6 +340,28 @@ func TestECDSARecoverRejectsWrongRecoveryID(t *testing.T) {
 	}
 }
 
+// recoveryID is a plain int, so nothing stops a caller from passing a value
+// outside libsecp256k1's only valid range, [0, 3]. Upstream itself rejects
+// it, but only via its illegal-argument path, which is why this is guarded
+// before ever crossing into C rather than left to that fallback.
+func TestECDSARecoverRejectsOutOfRangeRecoveryID(t *testing.T) {
+	key := seckey(t, "0000000000000000000000000000000000000000000000000000000000000001")
+	m := msg32(t, testMsg)
+	sig, _, ok := ECDSASignRecoverable(m, key)
+	if !ok {
+		t.Fatal("ECDSASignRecoverable failed for valid inputs")
+	}
+
+	for _, badID := range []int{-1, 4, 99} {
+		if _, ok := ECDSARecoverCompressed(m, &sig, badID); ok {
+			t.Errorf("ECDSARecoverCompressed succeeded with out-of-range recoveryID=%d", badID)
+		}
+		if _, ok := ECDSARecoverUncompressed(m, &sig, badID); ok {
+			t.Errorf("ECDSARecoverUncompressed succeeded with out-of-range recoveryID=%d", badID)
+		}
+	}
+}
+
 func TestECDSASignRecoverableHedgedVaries(t *testing.T) {
 	key := seckey(t, "0000000000000000000000000000000000000000000000000000000000000001")
 	m := msg32(t, testMsg)

@@ -103,6 +103,32 @@ package internal
 #cgo nocallback shim_musig_pubkey_ec_tweak_add
 #cgo noescape shim_musig_pubkey_xonly_tweak_add
 #cgo nocallback shim_musig_pubkey_xonly_tweak_add
+#cgo noescape shim_musig_nonce_gen
+#cgo nocallback shim_musig_nonce_gen
+#cgo noescape shim_musig_nonce_gen_counter
+#cgo nocallback shim_musig_nonce_gen_counter
+#cgo noescape shim_musig_pubnonce_parse
+#cgo nocallback shim_musig_pubnonce_parse
+#cgo noescape shim_musig_pubnonce_serialize
+#cgo nocallback shim_musig_pubnonce_serialize
+#cgo noescape shim_musig_aggnonce_parse
+#cgo nocallback shim_musig_aggnonce_parse
+#cgo noescape shim_musig_aggnonce_serialize
+#cgo nocallback shim_musig_aggnonce_serialize
+#cgo noescape shim_musig_nonce_agg
+#cgo nocallback shim_musig_nonce_agg
+#cgo noescape shim_musig_nonce_process
+#cgo nocallback shim_musig_nonce_process
+#cgo noescape shim_musig_partial_sig_parse
+#cgo nocallback shim_musig_partial_sig_parse
+#cgo noescape shim_musig_partial_sig_serialize
+#cgo nocallback shim_musig_partial_sig_serialize
+#cgo noescape shim_musig_partial_sign
+#cgo nocallback shim_musig_partial_sign
+#cgo noescape shim_musig_partial_sig_verify
+#cgo nocallback shim_musig_partial_sig_verify
+#cgo noescape shim_musig_partial_sig_agg
+#cgo nocallback shim_musig_partial_sig_agg
 
 #include "shim.h"
 */

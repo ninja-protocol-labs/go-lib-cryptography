@@ -2,6 +2,7 @@
 #define NINJA_SECP256K1_SHIM_H
 
 #include <stddef.h>
+#include <stdint.h>
 
 #include "secp256k1.h"
 #include "secp256k1_ecdh.h"
@@ -504,6 +505,181 @@ int shim_musig_pubkey_xonly_tweak_add(
     unsigned char *output,
     size_t *output_len,
     int compressed
+);
+
+/* ------------------------------------------------------- MuSig2 nonce gen */
+
+// Starts a signing session by generating this signer's secret and public
+// nonce. seckey, msg32, keyagg_cache, and extra_input32 are all optional
+// (pass NULL/0-length to omit); supplying whichever of them are already known
+// only strengthens the nonce against misuse, it never weakens it.
+//
+// session_secrand32 must be unique to this call and never reused — nonce
+// reuse leaks the secret key outright. It is mutated in place: on success
+// the library overwrites it, so the caller's buffer coming back zeroed is
+// itself evidence the value was consumed and must not be reused.
+//
+// secnonce carries the same warning as the struct it wraps (see
+// SHIM_MUSIG_SECNONCE_LEN above): never copy or reuse it once it has been
+// consumed by shim_musig_partial_sign.
+int shim_musig_nonce_gen(
+    const secp256k1_context *ctx,
+    unsigned char session_secrand32[32],
+    const unsigned char *seckey32,
+    const unsigned char *pubkey,
+    size_t pubkey_len,
+    const unsigned char *msg32,
+    const unsigned char *keyagg_cache,
+    const unsigned char *extra_input32,
+    unsigned char secnonce[SHIM_MUSIG_SECNONCE_LEN],
+    unsigned char pubnonce[SHIM_MUSIG_PUBNONCE_LEN]
+);
+
+// Alternative to shim_musig_nonce_gen for callers without access to good
+// randomness: nonrepeating_cnt replaces session_secrand32, and must never
+// repeat for the same seckey (a counter that increments on every call is
+// sufficient; unlike session_secrand32 it need not be secret or
+// unpredictable, only unique). msg32, keyagg_cache, and extra_input32 remain
+// optional as in shim_musig_nonce_gen.
+int shim_musig_nonce_gen_counter(
+    const secp256k1_context *ctx,
+    const unsigned char seckey32[SHIM_SECKEY_LEN],
+    uint64_t nonrepeating_cnt,
+    const unsigned char *msg32,
+    const unsigned char *keyagg_cache,
+    const unsigned char *extra_input32,
+    unsigned char secnonce[SHIM_MUSIG_SECNONCE_LEN],
+    unsigned char pubnonce[SHIM_MUSIG_PUBNONCE_LEN]
+);
+
+/* --------------------------------------------- MuSig2 nonce exchange/agg */
+
+// A pubnonce or aggnonce as shim_musig_nonce_gen and shim_musig_nonce_agg
+// produce and consume it is the library's 132-byte internal representation,
+// not wire format — it is not meant to be sent to another signer as-is.
+// These parse/serialize pairs convert to and from the 66-byte form that
+// actually crosses a network: serialize before sending a nonce this signer
+// produced, parse after receiving one from someone else.
+
+int shim_musig_pubnonce_parse(
+    const secp256k1_context *ctx,
+    const unsigned char input66[SHIM_MUSIG_PUBNONCE_SERIALIZED_LEN],
+    unsigned char pubnonce[SHIM_MUSIG_PUBNONCE_LEN]
+);
+
+int shim_musig_pubnonce_serialize(
+    const secp256k1_context *ctx,
+    const unsigned char pubnonce[SHIM_MUSIG_PUBNONCE_LEN],
+    unsigned char output66[SHIM_MUSIG_PUBNONCE_SERIALIZED_LEN]
+);
+
+int shim_musig_aggnonce_parse(
+    const secp256k1_context *ctx,
+    const unsigned char input66[SHIM_MUSIG_AGGNONCE_SERIALIZED_LEN],
+    unsigned char aggnonce[SHIM_MUSIG_AGGNONCE_LEN]
+);
+
+int shim_musig_aggnonce_serialize(
+    const secp256k1_context *ctx,
+    const unsigned char aggnonce[SHIM_MUSIG_AGGNONCE_LEN],
+    unsigned char output66[SHIM_MUSIG_AGGNONCE_SERIALIZED_LEN]
+);
+
+// Aggregates pubnonce_count signers' public nonces (each already parsed into
+// the 132-byte internal form) into one aggregate nonce. This can be done by
+// an untrusted party: an incorrectly computed aggregate only invalidates the
+// resulting signature, it does not compromise anyone's key. Shares
+// SHIM_MAX_COMBINE_PUBKEYS with shim_pubkey_combine as the participant cap,
+// for the same fixed-stack-array reason.
+int shim_musig_nonce_agg(
+    const secp256k1_context *ctx,
+    const unsigned char *pubnonces,
+    size_t pubnonce_count,
+    unsigned char aggnonce[SHIM_MUSIG_AGGNONCE_LEN]
+);
+
+// Combines the aggregate nonce with the message and the key-aggregation
+// state into a session, the object every remaining step (signing,
+// verifying, and aggregating partial signatures) is keyed off of.
+int shim_musig_nonce_process(
+    const secp256k1_context *ctx,
+    const unsigned char aggnonce[SHIM_MUSIG_AGGNONCE_LEN],
+    const unsigned char msg32[SHIM_MESSAGE_LEN],
+    const unsigned char keyagg_cache[SHIM_MUSIG_KEYAGG_CACHE_LEN],
+    unsigned char session[SHIM_MUSIG_SESSION_LEN]
+);
+
+/* ----------------------------------------------------- MuSig2 partial sig */
+
+int shim_musig_partial_sig_parse(
+    const secp256k1_context *ctx,
+    const unsigned char input32[SHIM_MUSIG_PARTIAL_SIG_SERIALIZED_LEN],
+    unsigned char partial_sig[SHIM_MUSIG_PARTIAL_SIG_LEN]
+);
+
+int shim_musig_partial_sig_serialize(
+    const secp256k1_context *ctx,
+    const unsigned char partial_sig[SHIM_MUSIG_PARTIAL_SIG_LEN],
+    unsigned char output32[SHIM_MUSIG_PARTIAL_SIG_SERIALIZED_LEN]
+);
+
+// Produces this signer's partial signature for the session. secnonce is
+// consumed: on return it is overwritten (by the upstream implementation,
+// as a best-effort guard against reuse), and this call fails outright if
+// handed a secnonce that is already all zeros — meaning it was already used
+// here before. It must have been generated (via shim_musig_nonce_gen or
+// shim_musig_nonce_gen_counter) for this same seckey and session, or the
+// library's illegal_callback fires rather than this function returning 0.
+//
+// This does not verify its own output, matching upstream's deviation from
+// the specification it implements; call shim_musig_partial_sig_verify on the
+// result if computation errors (not just malice) are a concern.
+int shim_musig_partial_sign(
+    const secp256k1_context *ctx,
+    unsigned char secnonce[SHIM_MUSIG_SECNONCE_LEN],
+    const unsigned char seckey32[SHIM_SECKEY_LEN],
+    const unsigned char keyagg_cache[SHIM_MUSIG_KEYAGG_CACHE_LEN],
+    const unsigned char session[SHIM_MUSIG_SESSION_LEN],
+    unsigned char partial_sig[SHIM_MUSIG_PARTIAL_SIG_LEN]
+);
+
+// Verifies one signer's partial signature within a specific session. Correct
+// operation of a MuSig2 session does not require calling this — if any
+// partial signature is wrong, the final aggregate signature will simply fail
+// to verify — but this pinpoints which signer's contribution was at fault,
+// which the aggregate-only check cannot.
+//
+// pubnonce and pubkey must be the exact ones that went into aggnonce (via
+// shim_musig_nonce_agg) and keyagg_cache (via shim_musig_pubkey_agg)
+// respectively for this signer; passing a mismatched pair does not
+// necessarily fail loudly; it risks verifying against the wrong signing
+// session entirely.
+int shim_musig_partial_sig_verify(
+    const secp256k1_context *ctx,
+    const unsigned char partial_sig[SHIM_MUSIG_PARTIAL_SIG_LEN],
+    const unsigned char pubnonce[SHIM_MUSIG_PUBNONCE_LEN],
+    const unsigned char *pubkey,
+    size_t pubkey_len,
+    const unsigned char keyagg_cache[SHIM_MUSIG_KEYAGG_CACHE_LEN],
+    const unsigned char session[SHIM_MUSIG_SESSION_LEN]
+);
+
+// Combines partial_sig_count signers' partial signatures into a complete
+// Schnorr signature — verifiable the same way any other Schnorr signature is
+// (shim_schnorr_verify), against the aggregate key from
+// shim_musig_pubkey_agg. Success here does not mean the result verifies: a
+// single bad partial signature (from a computation error, not necessarily
+// malice — this does not require dishonesty) still combines into a
+// signature that fails verification, which is exactly why
+// shim_musig_partial_sig_verify exists as a way to isolate the culprit.
+// Shares SHIM_MAX_COMBINE_PUBKEYS with shim_pubkey_combine as the
+// participant cap.
+int shim_musig_partial_sig_agg(
+    const secp256k1_context *ctx,
+    const unsigned char session[SHIM_MUSIG_SESSION_LEN],
+    const unsigned char *partial_sigs,
+    size_t partial_sig_count,
+    unsigned char sig64[SHIM_SIGNATURE_COMPACT_LEN]
 );
 
 #endif /* NINJA_SECP256K1_SHIM_H */

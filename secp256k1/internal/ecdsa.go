@@ -145,8 +145,16 @@ func ECDSASignRecoverableHedged(msg *[MessageLen]byte, seckey *[SeckeyLen]byte, 
 
 // ECDSARecoverCompressed recovers the compressed public key that produced sig
 // (with the recovery id from ECDSASignRecoverable) over msg.
+//
+// recoveryID is checked against its only valid range, [0, 3], before
+// crossing into C: libsecp256k1 rejects it there too, but only after
+// logging it as a caller misuse, which a plain out-of-range value from
+// untrusted input does not deserve.
 func ECDSARecoverCompressed(msg *[MessageLen]byte, sig *[SignatureCompactLen]byte, recoveryID int) ([PubkeyCompressedLen]byte, bool) {
 	var out [PubkeyCompressedLen]byte
+	if recoveryID < 0 || recoveryID > 3 {
+		return out, false
+	}
 	length := C.size_t(len(out))
 	ok := C.shim_ecdsa_recover(context(), (*C.uchar)(&msg[0]), (*C.uchar)(&sig[0]), C.int(recoveryID), (*C.uchar)(&out[0]), &length, 1) == 1
 	return out, ok
@@ -155,6 +163,9 @@ func ECDSARecoverCompressed(msg *[MessageLen]byte, sig *[SignatureCompactLen]byt
 // ECDSARecoverUncompressed is ECDSARecoverCompressed, uncompressed.
 func ECDSARecoverUncompressed(msg *[MessageLen]byte, sig *[SignatureCompactLen]byte, recoveryID int) ([PubkeyUncompressedLen]byte, bool) {
 	var out [PubkeyUncompressedLen]byte
+	if recoveryID < 0 || recoveryID > 3 {
+		return out, false
+	}
 	length := C.size_t(len(out))
 	ok := C.shim_ecdsa_recover(context(), (*C.uchar)(&msg[0]), (*C.uchar)(&sig[0]), C.int(recoveryID), (*C.uchar)(&out[0]), &length, 0) == 1
 	return out, ok
