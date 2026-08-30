@@ -23,4 +23,14 @@ var (
 	// already-validated public key into a different wire format failed —
 	// not something normal operation can produce.
 	ErrPublicKeySerializationFailed = errors.New("secp256k1: public key serialization failed")
+
+	// ErrSigningFailed means signing failed despite valid inputs — not
+	// something normal operation can produce, since a PrivateKey's scalar
+	// is already validated at construction.
+	ErrSigningFailed = errors.New("secp256k1: signing failed")
+
+	// ErrInvalidSignature means the given signature bytes are malformed,
+	// or (for Recover/RecoverDigest) do not yield a valid public key for
+	// the given recovery id.
+	ErrInvalidSignature = errors.New("secp256k1: invalid signature")
 )

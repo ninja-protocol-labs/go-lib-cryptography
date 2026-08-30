@@ -2,8 +2,37 @@ package secp256k1
 
 import (
 	"encoding/hex"
+	"math/big"
 	"testing"
 )
+
+// The order of the secp256k1 group. S values live in [1, n-1]; flipping one
+// (n - s) turns a low-S signature into its high-S counterpart and back,
+// which is how flipHighS below manufactures a high-S test signature without
+// a from-scratch test vector.
+var curveOrder, _ = new(big.Int).SetString(
+	"fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141", 16,
+)
+
+// flipHighS takes a 64-byte compact (r||s) signature — SignCompact always
+// produces the low-S form — and returns the same signature with s replaced
+// by n-s, its high-S counterpart. Applying it twice reproduces the
+// original.
+func flipHighS(t *testing.T, sig []byte) []byte {
+	t.Helper()
+	if len(sig) != 64 {
+		t.Fatalf("flipHighS: sig is %d bytes, want 64", len(sig))
+	}
+
+	s := new(big.Int).SetBytes(sig[32:64])
+	flipped := new(big.Int).Sub(curveOrder, s)
+	flippedBytes := flipped.FillBytes(make([]byte, 32))
+
+	out := make([]byte, 64)
+	copy(out[:32], sig[:32])
+	copy(out[32:], flippedBytes)
+	return out
+}
 
 // The expected public key for seckeyOne (private key 1) — a fixed constant
 // of the curve (it happens to equal the generator point G itself, since

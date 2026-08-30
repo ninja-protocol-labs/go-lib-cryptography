@@ -134,28 +134,85 @@ package internal
 */
 import "C"
 
-// Buffer sizes, taken from the header so the two cannot drift apart.
+// Buffer sizes. Plain Go int literals rather than aliasing C.SHIM_* directly
+// — gopls (and so most editors) can't run cgo while indexing, so a cgo-derived
+// array length like [C.SHIM_MESSAGE_LEN]byte reads to it as unresolvable,
+// which has been observed to make it mis-infer the pointer type of a
+// parameter such as msg *[MessageLen]byte entirely (e.g. as *[]byte),
+// producing a false type error at the call site despite `go build` being
+// clean. The compile-time assertions below are what actually keep these
+// from drifting out of sync with the C headers, instead of the alias
+// itself.
 const (
-	SeckeyLen             = C.SHIM_SECKEY_LEN
-	PubkeyCompressedLen   = C.SHIM_PUBKEY_COMPRESSED_LEN
-	PubkeyUncompressedLen = C.SHIM_PUBKEY_UNCOMPRESSED_LEN
-	XonlyPubkeyLen        = C.SHIM_XONLY_PUBKEY_LEN
-	SignatureCompactLen   = C.SHIM_SIGNATURE_COMPACT_LEN
-	SignatureDERMaxLen    = C.SHIM_SIGNATURE_DER_MAX_LEN
-	MessageLen            = C.SHIM_MESSAGE_LEN
-	SharedSecretLen       = C.SHIM_SHARED_SECRET_LEN
-	TweakLen              = C.SHIM_TWEAK_LEN
-	HashLen               = C.SHIM_HASH_LEN
-	MaxCombinePubkeys     = C.SHIM_MAX_COMBINE_PUBKEYS
-	EllswiftLen           = C.SHIM_ELLSWIFT_LEN
+	SeckeyLen             = 32
+	PubkeyCompressedLen   = 33
+	PubkeyUncompressedLen = 65
+	XonlyPubkeyLen        = 32
+	SignatureCompactLen   = 64
+	SignatureDERMaxLen    = 72
+	MessageLen            = 32
+	SharedSecretLen       = 32
+	TweakLen              = 32
+	HashLen               = 32
+	MaxCombinePubkeys     = 64
+	EllswiftLen           = 64
 
-	MusigKeyaggCacheLen          = C.SHIM_MUSIG_KEYAGG_CACHE_LEN
-	MusigSecnonceLen             = C.SHIM_MUSIG_SECNONCE_LEN
-	MusigPubnonceLen             = C.SHIM_MUSIG_PUBNONCE_LEN
-	MusigPubnonceSerializedLen   = C.SHIM_MUSIG_PUBNONCE_SERIALIZED_LEN
-	MusigAggnonceLen             = C.SHIM_MUSIG_AGGNONCE_LEN
-	MusigAggnonceSerializedLen   = C.SHIM_MUSIG_AGGNONCE_SERIALIZED_LEN
-	MusigSessionLen              = C.SHIM_MUSIG_SESSION_LEN
-	MusigPartialSigLen           = C.SHIM_MUSIG_PARTIAL_SIG_LEN
-	MusigPartialSigSerializedLen = C.SHIM_MUSIG_PARTIAL_SIG_SERIALIZED_LEN
+	MusigKeyaggCacheLen          = 197
+	MusigSecnonceLen             = 132
+	MusigPubnonceLen             = 132
+	MusigPubnonceSerializedLen   = 66
+	MusigAggnonceLen             = 132
+	MusigAggnonceSerializedLen   = 66
+	MusigSessionLen              = 133
+	MusigPartialSigLen           = 36
+	MusigPartialSigSerializedLen = 32
+)
+
+// Compile-time assertions that the constants above exactly match the C
+// headers. An array size expression only compiles if it is non-negative, so
+// each pair — the difference taken in both directions — only compiles if the
+// two sides are equal; any drift fails the build immediately.
+var (
+	_ [SeckeyLen - int(C.SHIM_SECKEY_LEN)]byte
+	_ [int(C.SHIM_SECKEY_LEN) - SeckeyLen]byte
+	_ [PubkeyCompressedLen - int(C.SHIM_PUBKEY_COMPRESSED_LEN)]byte
+	_ [int(C.SHIM_PUBKEY_COMPRESSED_LEN) - PubkeyCompressedLen]byte
+	_ [PubkeyUncompressedLen - int(C.SHIM_PUBKEY_UNCOMPRESSED_LEN)]byte
+	_ [int(C.SHIM_PUBKEY_UNCOMPRESSED_LEN) - PubkeyUncompressedLen]byte
+	_ [XonlyPubkeyLen - int(C.SHIM_XONLY_PUBKEY_LEN)]byte
+	_ [int(C.SHIM_XONLY_PUBKEY_LEN) - XonlyPubkeyLen]byte
+	_ [SignatureCompactLen - int(C.SHIM_SIGNATURE_COMPACT_LEN)]byte
+	_ [int(C.SHIM_SIGNATURE_COMPACT_LEN) - SignatureCompactLen]byte
+	_ [SignatureDERMaxLen - int(C.SHIM_SIGNATURE_DER_MAX_LEN)]byte
+	_ [int(C.SHIM_SIGNATURE_DER_MAX_LEN) - SignatureDERMaxLen]byte
+	_ [MessageLen - int(C.SHIM_MESSAGE_LEN)]byte
+	_ [int(C.SHIM_MESSAGE_LEN) - MessageLen]byte
+	_ [SharedSecretLen - int(C.SHIM_SHARED_SECRET_LEN)]byte
+	_ [int(C.SHIM_SHARED_SECRET_LEN) - SharedSecretLen]byte
+	_ [TweakLen - int(C.SHIM_TWEAK_LEN)]byte
+	_ [int(C.SHIM_TWEAK_LEN) - TweakLen]byte
+	_ [HashLen - int(C.SHIM_HASH_LEN)]byte
+	_ [int(C.SHIM_HASH_LEN) - HashLen]byte
+	_ [MaxCombinePubkeys - int(C.SHIM_MAX_COMBINE_PUBKEYS)]byte
+	_ [int(C.SHIM_MAX_COMBINE_PUBKEYS) - MaxCombinePubkeys]byte
+	_ [EllswiftLen - int(C.SHIM_ELLSWIFT_LEN)]byte
+	_ [int(C.SHIM_ELLSWIFT_LEN) - EllswiftLen]byte
+	_ [MusigKeyaggCacheLen - int(C.SHIM_MUSIG_KEYAGG_CACHE_LEN)]byte
+	_ [int(C.SHIM_MUSIG_KEYAGG_CACHE_LEN) - MusigKeyaggCacheLen]byte
+	_ [MusigSecnonceLen - int(C.SHIM_MUSIG_SECNONCE_LEN)]byte
+	_ [int(C.SHIM_MUSIG_SECNONCE_LEN) - MusigSecnonceLen]byte
+	_ [MusigPubnonceLen - int(C.SHIM_MUSIG_PUBNONCE_LEN)]byte
+	_ [int(C.SHIM_MUSIG_PUBNONCE_LEN) - MusigPubnonceLen]byte
+	_ [MusigPubnonceSerializedLen - int(C.SHIM_MUSIG_PUBNONCE_SERIALIZED_LEN)]byte
+	_ [int(C.SHIM_MUSIG_PUBNONCE_SERIALIZED_LEN) - MusigPubnonceSerializedLen]byte
+	_ [MusigAggnonceLen - int(C.SHIM_MUSIG_AGGNONCE_LEN)]byte
+	_ [int(C.SHIM_MUSIG_AGGNONCE_LEN) - MusigAggnonceLen]byte
+	_ [MusigAggnonceSerializedLen - int(C.SHIM_MUSIG_AGGNONCE_SERIALIZED_LEN)]byte
+	_ [int(C.SHIM_MUSIG_AGGNONCE_SERIALIZED_LEN) - MusigAggnonceSerializedLen]byte
+	_ [MusigSessionLen - int(C.SHIM_MUSIG_SESSION_LEN)]byte
+	_ [int(C.SHIM_MUSIG_SESSION_LEN) - MusigSessionLen]byte
+	_ [MusigPartialSigLen - int(C.SHIM_MUSIG_PARTIAL_SIG_LEN)]byte
+	_ [int(C.SHIM_MUSIG_PARTIAL_SIG_LEN) - MusigPartialSigLen]byte
+	_ [MusigPartialSigSerializedLen - int(C.SHIM_MUSIG_PARTIAL_SIG_SERIALIZED_LEN)]byte
+	_ [int(C.SHIM_MUSIG_PARTIAL_SIG_SERIALIZED_LEN) - MusigPartialSigSerializedLen]byte
 )
