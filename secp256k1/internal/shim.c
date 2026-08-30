@@ -139,3 +139,99 @@ int shim_ecdsa_verify_compact(
 
     return secp256k1_ecdsa_verify(ctx, &sig, msg32, &parsed_pubkey);
 }
+
+int shim_ecdsa_sign_der(
+    const secp256k1_context *ctx,
+    const unsigned char msg32[SHIM_MESSAGE_LEN],
+    const unsigned char seckey32[SHIM_SECKEY_LEN],
+    const unsigned char *aux_rand32,
+    unsigned char *output,
+    size_t *output_len
+) {
+    secp256k1_ecdsa_signature sig;
+
+    if (!secp256k1_ecdsa_sign(ctx, &sig, msg32, seckey32, NULL, aux_rand32)) {
+        return 0;
+    }
+
+    return secp256k1_ecdsa_signature_serialize_der(ctx, output, output_len, &sig);
+}
+
+int shim_ecdsa_verify_der(
+    const secp256k1_context *ctx,
+    const unsigned char msg32[SHIM_MESSAGE_LEN],
+    const unsigned char *pubkey,
+    size_t pubkey_len,
+    const unsigned char *signature,
+    size_t signature_len,
+    int normalize
+) {
+    secp256k1_pubkey parsed_pubkey;
+    secp256k1_ecdsa_signature sig;
+
+    if (!secp256k1_ec_pubkey_parse(ctx, &parsed_pubkey, pubkey, pubkey_len)) {
+        return 0;
+    }
+    if (!secp256k1_ecdsa_signature_parse_der(ctx, &sig, signature, signature_len)) {
+        return 0;
+    }
+
+    if (normalize) {
+        secp256k1_ecdsa_signature_normalize(ctx, &sig, &sig);
+    }
+
+    return secp256k1_ecdsa_verify(ctx, &sig, msg32, &parsed_pubkey);
+}
+
+/* -------------------------------------------------------- signature format */
+
+int shim_ecdsa_signature_normalize(
+    const secp256k1_context *ctx,
+    const unsigned char signature64[SHIM_SIGNATURE_COMPACT_LEN],
+    unsigned char output64[SHIM_SIGNATURE_COMPACT_LEN],
+    int *was_high
+) {
+    secp256k1_ecdsa_signature sig, normalized;
+    int high;
+
+    if (!secp256k1_ecdsa_signature_parse_compact(ctx, &sig, signature64)) {
+        return 0;
+    }
+
+    high = secp256k1_ecdsa_signature_normalize(ctx, &normalized, &sig);
+    if (was_high != NULL) {
+        *was_high = high;
+    }
+
+    return secp256k1_ecdsa_signature_serialize_compact(ctx, output64, &normalized);
+}
+
+int shim_ecdsa_signature_der_to_compact(
+    const secp256k1_context *ctx,
+    const unsigned char *signature,
+    size_t signature_len,
+    unsigned char output64[SHIM_SIGNATURE_COMPACT_LEN]
+) {
+    secp256k1_ecdsa_signature sig;
+
+    if (!secp256k1_ecdsa_signature_parse_der(ctx, &sig, signature, signature_len)) {
+        return 0;
+    }
+
+    return secp256k1_ecdsa_signature_serialize_compact(ctx, output64, &sig);
+}
+
+int shim_ecdsa_signature_compact_to_der(
+    const secp256k1_context *ctx,
+    const unsigned char signature64[SHIM_SIGNATURE_COMPACT_LEN],
+    unsigned char *output,
+    size_t *output_len
+) {
+    secp256k1_ecdsa_signature sig;
+
+    if (!secp256k1_ecdsa_signature_parse_compact(ctx, &sig, signature64)) {
+        return 0;
+    }
+
+    return secp256k1_ecdsa_signature_serialize_der(ctx, output, output_len, &sig);
+}

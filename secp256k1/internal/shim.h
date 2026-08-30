@@ -246,10 +246,15 @@ int shim_ecdsa_sign_compact(
     unsigned char output64[SHIM_SIGNATURE_COMPACT_LEN]
 );
 
+// aux_rand32 follows the same hedged-signing contract as
+// shim_ecdsa_sign_compact: NULL for pure RFC 6979, or 32 bytes of extra
+// entropy (need not be secret) to make repeated signatures unlinkable without
+// giving up RFC 6979's protection against a failing RNG.
 int shim_ecdsa_sign_der(
     const secp256k1_context *ctx,
     const unsigned char msg32[SHIM_MESSAGE_LEN],
     const unsigned char seckey32[SHIM_SECKEY_LEN],
+    const unsigned char *aux_rand32,
     unsigned char *output,
     size_t *output_len
 );

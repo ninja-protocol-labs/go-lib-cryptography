@@ -49,3 +49,77 @@ func ECDSAVerifyCompact(msg *[MessageLen]byte, pubkey []byte, sig *[SignatureCom
 		norm,
 	) == 1
 }
+
+// ECDSASignDER is ECDSASignCompact, DER-encoded. Unlike the compressed and
+// uncompressed pubkey forms, DER has no second fixed-size sibling to split
+// against: its length varies with the signature's R and S values, so the
+// output is a max-size buffer plus n, the number of leading bytes actually
+// written.
+func ECDSASignDER(msg *[MessageLen]byte, seckey *[SeckeyLen]byte) ([SignatureDERMaxLen]byte, int, bool) {
+	var sig [SignatureDERMaxLen]byte
+	length := C.size_t(len(sig))
+	ok := C.shim_ecdsa_sign_der(context(), (*C.uchar)(&msg[0]), (*C.uchar)(&seckey[0]), nil, (*C.uchar)(&sig[0]), &length) == 1
+	return sig, int(length), ok
+}
+
+// ECDSASignDERHedged is ECDSASignDER with the same aux_rand semantics as
+// ECDSASignCompactHedged.
+func ECDSASignDERHedged(msg *[MessageLen]byte, seckey *[SeckeyLen]byte, auxRand *[32]byte) ([SignatureDERMaxLen]byte, int, bool) {
+	var sig [SignatureDERMaxLen]byte
+	length := C.size_t(len(sig))
+	ok := C.shim_ecdsa_sign_der(context(), (*C.uchar)(&msg[0]), (*C.uchar)(&seckey[0]), (*C.uchar)(&auxRand[0]), (*C.uchar)(&sig[0]), &length) == 1
+	return sig, int(length), ok
+}
+
+// ECDSAVerifyDER is ECDSAVerifyCompact for a DER-encoded signature.
+func ECDSAVerifyDER(msg *[MessageLen]byte, pubkey []byte, sig []byte, normalize bool) bool {
+	if len(pubkey) == 0 || len(sig) == 0 {
+		return false
+	}
+
+	var norm C.int
+	if normalize {
+		norm = 1
+	}
+
+	return C.shim_ecdsa_verify_der(
+		context(),
+		(*C.uchar)(&msg[0]),
+		(*C.uchar)(&pubkey[0]), C.size_t(len(pubkey)),
+		(*C.uchar)(&sig[0]), C.size_t(len(sig)),
+		norm,
+	) == 1
+}
+
+// ECDSASignatureNormalize folds sig into low-S form. wasHigh reports whether
+// sig needed normalizing, which lets a caller enforcing a low-S policy reject
+// the original instead of silently accepting the fixed-up version. ok is
+// false only if sig's R or S component is out of range.
+func ECDSASignatureNormalize(sig *[SignatureCompactLen]byte) ([SignatureCompactLen]byte, bool, bool) {
+	var out [SignatureCompactLen]byte
+	var high C.int
+	ok := C.shim_ecdsa_signature_normalize(context(), (*C.uchar)(&sig[0]), (*C.uchar)(&out[0]), &high) == 1
+	return out, high == 1, ok
+}
+
+// ECDSASignatureDERToCompact re-encodes a DER signature as compact, without
+// re-signing.
+func ECDSASignatureDERToCompact(sig []byte) ([SignatureCompactLen]byte, bool) {
+	var out [SignatureCompactLen]byte
+	if len(sig) == 0 {
+		return out, false
+	}
+	ok := C.shim_ecdsa_signature_der_to_compact(context(), (*C.uchar)(&sig[0]), C.size_t(len(sig)), (*C.uchar)(&out[0])) == 1
+	return out, ok
+}
+
+// ECDSASignatureCompactToDER re-encodes a compact signature as DER, without
+// re-signing. n reports how many leading bytes of the returned buffer are
+// valid, for the same reason as in ECDSASignDER. ok is false only if sig's R
+// or S component is out of range.
+func ECDSASignatureCompactToDER(sig *[SignatureCompactLen]byte) ([SignatureDERMaxLen]byte, int, bool) {
+	var out [SignatureDERMaxLen]byte
+	length := C.size_t(len(out))
+	ok := C.shim_ecdsa_signature_compact_to_der(context(), (*C.uchar)(&sig[0]), (*C.uchar)(&out[0]), &length) == 1
+	return out, int(length), ok
+}

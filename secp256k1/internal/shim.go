@@ -33,6 +33,16 @@ package internal
 #cgo nocallback shim_ecdsa_sign_compact
 #cgo noescape shim_ecdsa_verify_compact
 #cgo nocallback shim_ecdsa_verify_compact
+#cgo noescape shim_ecdsa_sign_der
+#cgo nocallback shim_ecdsa_sign_der
+#cgo noescape shim_ecdsa_verify_der
+#cgo nocallback shim_ecdsa_verify_der
+#cgo noescape shim_ecdsa_signature_normalize
+#cgo nocallback shim_ecdsa_signature_normalize
+#cgo noescape shim_ecdsa_signature_der_to_compact
+#cgo nocallback shim_ecdsa_signature_der_to_compact
+#cgo noescape shim_ecdsa_signature_compact_to_der
+#cgo nocallback shim_ecdsa_signature_compact_to_der
 
 #include "shim.h"
 */
