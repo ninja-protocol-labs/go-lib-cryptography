@@ -285,3 +285,93 @@ func TestECDSASignVerifyDoesNotAllocate(t *testing.T) {
 		t.Errorf("ECDSAVerifyCompact allocated %v times per run, want 0", got)
 	}
 }
+
+func TestECDSASignRecoverableRoundTrip(t *testing.T) {
+	key := seckey(t, "0000000000000000000000000000000000000000000000000000000000000001")
+	m := msg32(t, testMsg)
+
+	pub, ok := PubkeyCreateCompressed(key)
+	if !ok {
+		t.Fatal("PubkeyCreateCompressed failed for a valid key")
+	}
+
+	sig, recID, ok := ECDSASignRecoverable(m, key)
+	if !ok {
+		t.Fatal("ECDSASignRecoverable failed for valid inputs")
+	}
+
+	recovered, ok := ECDSARecoverCompressed(m, &sig, recID)
+	if !ok {
+		t.Fatal("ECDSARecoverCompressed failed for a valid signature")
+	}
+	if recovered != pub {
+		t.Error("ECDSARecoverCompressed did not recover the signer's public key")
+	}
+
+	// The recoverable signature's 64 bytes must equal what ECDSASignCompact
+	// produces for the same input: recovery only adds a 2-bit index on top of
+	// an otherwise ordinary signature.
+	compactSig, ok := ECDSASignCompact(m, key)
+	if !ok {
+		t.Fatal("ECDSASignCompact failed for valid inputs")
+	}
+	if sig != compactSig {
+		t.Error("ECDSASignRecoverable's 64-byte signature differs from ECDSASignCompact's")
+	}
+}
+
+func TestECDSARecoverRejectsWrongRecoveryID(t *testing.T) {
+	key := seckey(t, "0000000000000000000000000000000000000000000000000000000000000001")
+	m := msg32(t, testMsg)
+
+	pub, ok := PubkeyCreateCompressed(key)
+	if !ok {
+		t.Fatal("PubkeyCreateCompressed failed for a valid key")
+	}
+
+	sig, recID, ok := ECDSASignRecoverable(m, key)
+	if !ok {
+		t.Fatal("ECDSASignRecoverable failed for valid inputs")
+	}
+
+	wrongID := (recID + 1) % 4
+	if recovered, ok := ECDSARecoverCompressed(m, &sig, wrongID); ok && recovered == pub {
+		t.Error("ECDSARecoverCompressed recovered the correct key from the wrong recovery id")
+	}
+}
+
+func TestECDSASignRecoverableHedgedVaries(t *testing.T) {
+	key := seckey(t, "0000000000000000000000000000000000000000000000000000000000000001")
+	m := msg32(t, testMsg)
+
+	var aux1, aux2 [32]byte
+	aux1[0] = 0x01
+	aux2[0] = 0x02
+
+	sig1, _, ok := ECDSASignRecoverableHedged(m, key, &aux1)
+	if !ok {
+		t.Fatal("ECDSASignRecoverableHedged failed for valid inputs")
+	}
+	sig2, _, ok := ECDSASignRecoverableHedged(m, key, &aux2)
+	if !ok {
+		t.Fatal("ECDSASignRecoverableHedged failed for valid inputs")
+	}
+
+	if sig1 == sig2 {
+		t.Error("ECDSASignRecoverableHedged produced identical signatures for different aux_rand")
+	}
+}
+
+func TestECDSARecoverableDoesNotAllocate(t *testing.T) {
+	key := seckey(t, "0000000000000000000000000000000000000000000000000000000000000001")
+	m := msg32(t, testMsg)
+
+	if got := testing.AllocsPerRun(100, func() { ECDSASignRecoverable(m, key) }); got != 0 {
+		t.Errorf("ECDSASignRecoverable allocated %v times per run, want 0", got)
+	}
+
+	sig, recID, _ := ECDSASignRecoverable(m, key)
+	if got := testing.AllocsPerRun(100, func() { ECDSARecoverCompressed(m, &sig, recID) }); got != 0 {
+		t.Errorf("ECDSARecoverCompressed allocated %v times per run, want 0", got)
+	}
+}

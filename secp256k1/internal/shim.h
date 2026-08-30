@@ -4,6 +4,7 @@
 #include <stddef.h>
 
 #include "secp256k1.h"
+#include "secp256k1_recovery.h"
 
 // This shim collapses the multi-step libsecp256k1 sequences into one call each.
 // Creating a public key upstream means ec_pubkey_create followed by
@@ -34,6 +35,12 @@
 #define SHIM_SHARED_SECRET_LEN 32
 #define SHIM_TWEAK_LEN 32
 #define SHIM_HASH_LEN 32
+
+// shim_pubkey_combine and shim_pubkey_sort take their keys as a caller-owned
+// stack array sized against this, rather than allocating: a cap high enough
+// for any real multisig or key-aggregation scheme, low enough that even the
+// maximum request cannot threaten the stack.
+#define SHIM_MAX_COMBINE_PUBKEYS 64
 
 /* ---------------------------------------------------------------- context */
 
@@ -312,10 +319,13 @@ int shim_ecdsa_signature_compact_to_der(
 
 /* -------------------------------------------------------------- recovery */
 
+// aux_rand32 follows the same hedged-signing contract as
+// shim_ecdsa_sign_compact.
 int shim_ecdsa_sign_recoverable(
     const secp256k1_context *ctx,
     const unsigned char msg32[SHIM_MESSAGE_LEN],
     const unsigned char seckey32[SHIM_SECKEY_LEN],
+    const unsigned char *aux_rand32,
     unsigned char output64[SHIM_SIGNATURE_COMPACT_LEN],
     int *recovery_id
 );

@@ -193,6 +193,248 @@ func TestPubkeyParseRejectsInvalid(t *testing.T) {
 	}
 }
 
+func TestSeckeyPubkeyNegateRoundTrip(t *testing.T) {
+	key := seckey(t, "0000000000000000000000000000000000000000000000000000000000000001")
+	pub, ok := PubkeyCreateCompressed(key)
+	if !ok {
+		t.Fatal("PubkeyCreateCompressed failed for a valid key")
+	}
+
+	negatedKey := *key
+	if !SeckeyNegate(&negatedKey) {
+		t.Fatal("SeckeyNegate failed for a valid key")
+	}
+	if negatedKey == *key {
+		t.Error("SeckeyNegate did not change the key")
+	}
+
+	negatedPub, ok := PubkeyNegateCompressed(pub[:])
+	if !ok {
+		t.Fatal("PubkeyNegateCompressed failed for a valid key")
+	}
+
+	// -(d*G) must equal (n-d)*G: negating the seckey and then deriving, or
+	// deriving and then negating the pubkey, must land on the same point.
+	wantPub, ok := PubkeyCreateCompressed(&negatedKey)
+	if !ok {
+		t.Fatal("PubkeyCreateCompressed failed for a valid key")
+	}
+	if negatedPub != wantPub {
+		t.Error("PubkeyNegateCompressed(pubkey) != pubkey(SeckeyNegate(seckey))")
+	}
+
+	// Negating twice must return to the original.
+	twiceNegated := negatedKey
+	if !SeckeyNegate(&twiceNegated) {
+		t.Fatal("SeckeyNegate failed for a valid key")
+	}
+	if twiceNegated != *key {
+		t.Error("negating a seckey twice did not reproduce the original")
+	}
+}
+
+func TestPubkeyCombine(t *testing.T) {
+	key1 := seckey(t, "0000000000000000000000000000000000000000000000000000000000000001")
+	key2 := seckey(t, "0000000000000000000000000000000000000000000000000000000000000002")
+
+	pub1, ok := PubkeyCreateCompressed(key1)
+	if !ok {
+		t.Fatal("PubkeyCreateCompressed failed for a valid key")
+	}
+	pub2, ok := PubkeyCreateCompressed(key2)
+	if !ok {
+		t.Fatal("PubkeyCreateCompressed failed for a valid key")
+	}
+
+	// (1*G) + (2*G) must equal 3*G.
+	combined, ok := PubkeyCombineCompressed([][PubkeyCompressedLen]byte{pub1, pub2})
+	if !ok {
+		t.Fatal("PubkeyCombineCompressed failed for valid inputs")
+	}
+
+	key3 := seckey(t, "0000000000000000000000000000000000000000000000000000000000000003")
+	want, ok := PubkeyCreateCompressed(key3)
+	if !ok {
+		t.Fatal("PubkeyCreateCompressed failed for a valid key")
+	}
+
+	if combined != want {
+		t.Error("PubkeyCombineCompressed(1*G, 2*G) != 3*G")
+	}
+}
+
+func TestPubkeyCombineRejectsTooManyOrTooFew(t *testing.T) {
+	if _, ok := PubkeyCombineCompressed(nil); ok {
+		t.Error("PubkeyCombineCompressed succeeded with zero keys")
+	}
+
+	key, ok := PubkeyCreateCompressed(seckey(t, "0000000000000000000000000000000000000000000000000000000000000001"))
+	if !ok {
+		t.Fatal("PubkeyCreateCompressed failed for a valid key")
+	}
+	tooMany := make([][PubkeyCompressedLen]byte, MaxCombinePubkeys+1)
+	for i := range tooMany {
+		tooMany[i] = key
+	}
+	if _, ok := PubkeyCombineCompressed(tooMany); ok {
+		t.Error("PubkeyCombineCompressed succeeded with more than MaxCombinePubkeys keys")
+	}
+}
+
+func TestPubkeyCmp(t *testing.T) {
+	pub1, ok := PubkeyCreateCompressed(seckey(t, "0000000000000000000000000000000000000000000000000000000000000001"))
+	if !ok {
+		t.Fatal("PubkeyCreateCompressed failed for a valid key")
+	}
+	pub2, ok := PubkeyCreateCompressed(seckey(t, "0000000000000000000000000000000000000000000000000000000000000002"))
+	if !ok {
+		t.Fatal("PubkeyCreateCompressed failed for a valid key")
+	}
+
+	result, ok := PubkeyCmp(pub1[:], pub1[:])
+	if !ok || result != 0 {
+		t.Errorf("PubkeyCmp(pub1, pub1) = %d, %v, want 0, true", result, ok)
+	}
+
+	result, ok = PubkeyCmp(pub1[:], pub2[:])
+	if !ok {
+		t.Fatal("PubkeyCmp failed for valid inputs")
+	}
+	reverse, ok := PubkeyCmp(pub2[:], pub1[:])
+	if !ok {
+		t.Fatal("PubkeyCmp failed for valid inputs")
+	}
+	if result == 0 || result != -reverse {
+		t.Errorf("PubkeyCmp(a, b) = %d, PubkeyCmp(b, a) = %d, want opposite signs", result, reverse)
+	}
+}
+
+func TestPubkeySortCompressed(t *testing.T) {
+	pub1, ok := PubkeyCreateCompressed(seckey(t, "0000000000000000000000000000000000000000000000000000000000000001"))
+	if !ok {
+		t.Fatal("PubkeyCreateCompressed failed for a valid key")
+	}
+	pub2, ok := PubkeyCreateCompressed(seckey(t, "0000000000000000000000000000000000000000000000000000000000000002"))
+	if !ok {
+		t.Fatal("PubkeyCreateCompressed failed for a valid key")
+	}
+
+	// Feed them in whichever order sorts to descending, then check ascending
+	// comes out — proves the call actually reordered rather than being a
+	// no-op that happened to match.
+	unsorted := [][PubkeyCompressedLen]byte{pub1, pub2}
+	if cmp, ok := PubkeyCmp(pub1[:], pub2[:]); ok && cmp > 0 {
+		unsorted[0], unsorted[1] = pub2, pub1
+	}
+	reversed := [][PubkeyCompressedLen]byte{unsorted[1], unsorted[0]}
+
+	if !PubkeySortCompressed(reversed) {
+		t.Fatal("PubkeySortCompressed failed for valid inputs")
+	}
+	if reversed[0] != unsorted[0] || reversed[1] != unsorted[1] {
+		t.Error("PubkeySortCompressed did not produce ascending order")
+	}
+}
+
+func TestSeckeyTweakAddMul(t *testing.T) {
+	key := seckey(t, "0000000000000000000000000000000000000000000000000000000000000002")
+	tweak := seckey(t, "0000000000000000000000000000000000000000000000000000000000000003")
+
+	added := *key
+	if !SeckeyTweakAdd(&added, tweak) {
+		t.Fatal("SeckeyTweakAdd failed for valid inputs")
+	}
+	// 2 + 3 = 5
+	want := seckey(t, "0000000000000000000000000000000000000000000000000000000000000005")
+	if added != *want {
+		t.Errorf("SeckeyTweakAdd(2, 3) = %x, want %x", added, *want)
+	}
+
+	multiplied := *key
+	if !SeckeyTweakMul(&multiplied, tweak) {
+		t.Fatal("SeckeyTweakMul failed for valid inputs")
+	}
+	// 2 * 3 = 6
+	want = seckey(t, "0000000000000000000000000000000000000000000000000000000000000006")
+	if multiplied != *want {
+		t.Errorf("SeckeyTweakMul(2, 3) = %x, want %x", multiplied, *want)
+	}
+}
+
+func TestPubkeyTweakAddMulMatchSeckeyTweak(t *testing.T) {
+	key := seckey(t, "0000000000000000000000000000000000000000000000000000000000000002")
+	tweak := seckey(t, "0000000000000000000000000000000000000000000000000000000000000003")
+	pub, ok := PubkeyCreateCompressed(key)
+	if !ok {
+		t.Fatal("PubkeyCreateCompressed failed for a valid key")
+	}
+
+	addedKey := *key
+	if !SeckeyTweakAdd(&addedKey, tweak) {
+		t.Fatal("SeckeyTweakAdd failed for valid inputs")
+	}
+	wantAdded, ok := PubkeyCreateCompressed(&addedKey)
+	if !ok {
+		t.Fatal("PubkeyCreateCompressed failed for a valid key")
+	}
+	gotAdded, ok := PubkeyTweakAddCompressed(pub[:], tweak)
+	if !ok {
+		t.Fatal("PubkeyTweakAddCompressed failed for valid inputs")
+	}
+	if gotAdded != wantAdded {
+		t.Error("PubkeyTweakAddCompressed(pubkey, t) != pubkey(SeckeyTweakAdd(seckey, t))")
+	}
+
+	mulKey := *key
+	if !SeckeyTweakMul(&mulKey, tweak) {
+		t.Fatal("SeckeyTweakMul failed for valid inputs")
+	}
+	wantMul, ok := PubkeyCreateCompressed(&mulKey)
+	if !ok {
+		t.Fatal("PubkeyCreateCompressed failed for a valid key")
+	}
+	gotMul, ok := PubkeyTweakMulCompressed(pub[:], tweak)
+	if !ok {
+		t.Fatal("PubkeyTweakMulCompressed failed for valid inputs")
+	}
+	if gotMul != wantMul {
+		t.Error("PubkeyTweakMulCompressed(pubkey, t) != pubkey(SeckeyTweakMul(seckey, t))")
+	}
+}
+
+func TestStep7DoesNotAllocate(t *testing.T) {
+	key := seckey(t, "0000000000000000000000000000000000000000000000000000000000000001")
+	tweak := seckey(t, "0000000000000000000000000000000000000000000000000000000000000002")
+	pub, ok := PubkeyCreateCompressed(key)
+	if !ok {
+		t.Fatal("PubkeyCreateCompressed failed for a valid key")
+	}
+	pairs := [][PubkeyCompressedLen]byte{pub, pub}
+
+	checks := []struct {
+		name string
+		fn   func()
+	}{
+		{"SeckeyNegate", func() { k := *key; SeckeyNegate(&k) }},
+		{"PubkeyNegateCompressed", func() { PubkeyNegateCompressed(pub[:]) }},
+		{"PubkeyCombineCompressed", func() { PubkeyCombineCompressed(pairs) }},
+		{"PubkeyCmp", func() { PubkeyCmp(pub[:], pub[:]) }},
+		{"PubkeySortCompressed", func() { p := pairs; PubkeySortCompressed(p) }},
+		{"SeckeyTweakAdd", func() { k := *key; SeckeyTweakAdd(&k, tweak) }},
+		{"SeckeyTweakMul", func() { k := *key; SeckeyTweakMul(&k, tweak) }},
+		{"PubkeyTweakAddCompressed", func() { PubkeyTweakAddCompressed(pub[:], tweak) }},
+		{"PubkeyTweakMulCompressed", func() { PubkeyTweakMulCompressed(pub[:], tweak) }},
+	}
+
+	for _, c := range checks {
+		t.Run(c.name, func(t *testing.T) {
+			if got := testing.AllocsPerRun(100, c.fn); got != 0 {
+				t.Errorf("%s allocated %v times per run, want 0", c.name, got)
+			}
+		})
+	}
+}
+
 func TestPubkeyParseDoesNotAllocate(t *testing.T) {
 	compressed, err := hex.DecodeString(generatorCompressed)
 	if err != nil {

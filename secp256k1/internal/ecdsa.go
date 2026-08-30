@@ -123,3 +123,40 @@ func ECDSASignatureCompactToDER(sig *[SignatureCompactLen]byte) ([SignatureDERMa
 	ok := C.shim_ecdsa_signature_compact_to_der(context(), (*C.uchar)(&sig[0]), (*C.uchar)(&out[0]), &length) == 1
 	return out, int(length), ok
 }
+
+// ECDSASignRecoverable is ECDSASignCompact plus a recovery id: the extra
+// value that lets ECDSARecover reconstruct the signer's public key from the
+// signature and message alone, with no public key supplied. This is what
+// Ethereum's v/r/s and Bitcoin's message signing are built on.
+func ECDSASignRecoverable(msg *[MessageLen]byte, seckey *[SeckeyLen]byte) ([SignatureCompactLen]byte, int, bool) {
+	var sig [SignatureCompactLen]byte
+	var recID C.int
+	ok := C.shim_ecdsa_sign_recoverable(context(), (*C.uchar)(&msg[0]), (*C.uchar)(&seckey[0]), nil, (*C.uchar)(&sig[0]), &recID) == 1
+	return sig, int(recID), ok
+}
+
+// ECDSASignRecoverableHedged is ECDSASignRecoverable with the same aux_rand
+// semantics as ECDSASignCompactHedged.
+func ECDSASignRecoverableHedged(msg *[MessageLen]byte, seckey *[SeckeyLen]byte, auxRand *[32]byte) ([SignatureCompactLen]byte, int, bool) {
+	var sig [SignatureCompactLen]byte
+	var recID C.int
+	ok := C.shim_ecdsa_sign_recoverable(context(), (*C.uchar)(&msg[0]), (*C.uchar)(&seckey[0]), (*C.uchar)(&auxRand[0]), (*C.uchar)(&sig[0]), &recID) == 1
+	return sig, int(recID), ok
+}
+
+// ECDSARecoverCompressed recovers the compressed public key that produced sig
+// (with the recovery id from ECDSASignRecoverable) over msg.
+func ECDSARecoverCompressed(msg *[MessageLen]byte, sig *[SignatureCompactLen]byte, recoveryID int) ([PubkeyCompressedLen]byte, bool) {
+	var out [PubkeyCompressedLen]byte
+	length := C.size_t(len(out))
+	ok := C.shim_ecdsa_recover(context(), (*C.uchar)(&msg[0]), (*C.uchar)(&sig[0]), C.int(recoveryID), (*C.uchar)(&out[0]), &length, 1) == 1
+	return out, ok
+}
+
+// ECDSARecoverUncompressed is ECDSARecoverCompressed, uncompressed.
+func ECDSARecoverUncompressed(msg *[MessageLen]byte, sig *[SignatureCompactLen]byte, recoveryID int) ([PubkeyUncompressedLen]byte, bool) {
+	var out [PubkeyUncompressedLen]byte
+	length := C.size_t(len(out))
+	ok := C.shim_ecdsa_recover(context(), (*C.uchar)(&msg[0]), (*C.uchar)(&sig[0]), C.int(recoveryID), (*C.uchar)(&out[0]), &length, 0) == 1
+	return out, ok
+}

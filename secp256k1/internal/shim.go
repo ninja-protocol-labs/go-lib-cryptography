@@ -43,6 +43,28 @@ package internal
 #cgo nocallback shim_ecdsa_signature_der_to_compact
 #cgo noescape shim_ecdsa_signature_compact_to_der
 #cgo nocallback shim_ecdsa_signature_compact_to_der
+#cgo noescape shim_seckey_negate
+#cgo nocallback shim_seckey_negate
+#cgo noescape shim_pubkey_negate
+#cgo nocallback shim_pubkey_negate
+#cgo noescape shim_pubkey_combine
+#cgo nocallback shim_pubkey_combine
+#cgo noescape shim_pubkey_cmp
+#cgo nocallback shim_pubkey_cmp
+#cgo noescape shim_pubkey_sort
+#cgo nocallback shim_pubkey_sort
+#cgo noescape shim_seckey_tweak_add
+#cgo nocallback shim_seckey_tweak_add
+#cgo noescape shim_seckey_tweak_mul
+#cgo nocallback shim_seckey_tweak_mul
+#cgo noescape shim_pubkey_tweak_add
+#cgo nocallback shim_pubkey_tweak_add
+#cgo noescape shim_pubkey_tweak_mul
+#cgo nocallback shim_pubkey_tweak_mul
+#cgo noescape shim_ecdsa_sign_recoverable
+#cgo nocallback shim_ecdsa_sign_recoverable
+#cgo noescape shim_ecdsa_recover
+#cgo nocallback shim_ecdsa_recover
 
 #include "shim.h"
 */
@@ -60,4 +82,5 @@ const (
 	SharedSecretLen       = C.SHIM_SHARED_SECRET_LEN
 	TweakLen              = C.SHIM_TWEAK_LEN
 	HashLen               = C.SHIM_HASH_LEN
+	MaxCombinePubkeys     = C.SHIM_MAX_COMBINE_PUBKEYS
 )

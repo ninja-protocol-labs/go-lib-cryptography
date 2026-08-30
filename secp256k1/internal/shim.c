@@ -83,6 +83,186 @@ int shim_pubkey_parse(
     return secp256k1_ec_pubkey_serialize(ctx, output, output_len, &parsed, flags);
 }
 
+int shim_seckey_negate(
+    const secp256k1_context *ctx,
+    unsigned char seckey32[SHIM_SECKEY_LEN]
+) {
+    return secp256k1_ec_seckey_negate(ctx, seckey32);
+}
+
+int shim_pubkey_negate(
+    const secp256k1_context *ctx,
+    const unsigned char *pubkey,
+    size_t pubkey_len,
+    unsigned char *output,
+    size_t *output_len,
+    int compressed
+) {
+    secp256k1_pubkey parsed;
+    unsigned int flags = compressed ? SECP256K1_EC_COMPRESSED : SECP256K1_EC_UNCOMPRESSED;
+
+    if (!secp256k1_ec_pubkey_parse(ctx, &parsed, pubkey, pubkey_len)) {
+        return 0;
+    }
+    if (!secp256k1_ec_pubkey_negate(ctx, &parsed)) {
+        return 0;
+    }
+
+    return secp256k1_ec_pubkey_serialize(ctx, output, output_len, &parsed, flags);
+}
+
+int shim_pubkey_combine(
+    const secp256k1_context *ctx,
+    const unsigned char *pubkeys,
+    size_t pubkey_count,
+    unsigned char *output,
+    size_t *output_len,
+    int compressed
+) {
+    secp256k1_pubkey parsed[SHIM_MAX_COMBINE_PUBKEYS];
+    const secp256k1_pubkey *ins[SHIM_MAX_COMBINE_PUBKEYS];
+    secp256k1_pubkey combined;
+    unsigned int flags = compressed ? SECP256K1_EC_COMPRESSED : SECP256K1_EC_UNCOMPRESSED;
+    size_t i;
+
+    if (pubkey_count == 0 || pubkey_count > SHIM_MAX_COMBINE_PUBKEYS) {
+        return 0;
+    }
+
+    for (i = 0; i < pubkey_count; i++) {
+        const unsigned char *key = pubkeys + (i * SHIM_PUBKEY_COMPRESSED_LEN);
+        if (!secp256k1_ec_pubkey_parse(ctx, &parsed[i], key, SHIM_PUBKEY_COMPRESSED_LEN)) {
+            return 0;
+        }
+        ins[i] = &parsed[i];
+    }
+
+    if (!secp256k1_ec_pubkey_combine(ctx, &combined, ins, pubkey_count)) {
+        return 0;
+    }
+
+    return secp256k1_ec_pubkey_serialize(ctx, output, output_len, &combined, flags);
+}
+
+int shim_pubkey_cmp(
+    const secp256k1_context *ctx,
+    const unsigned char *pubkey_a,
+    size_t pubkey_a_len,
+    const unsigned char *pubkey_b,
+    size_t pubkey_b_len,
+    int *result
+) {
+    secp256k1_pubkey a, b;
+
+    if (!secp256k1_ec_pubkey_parse(ctx, &a, pubkey_a, pubkey_a_len)) {
+        return 0;
+    }
+    if (!secp256k1_ec_pubkey_parse(ctx, &b, pubkey_b, pubkey_b_len)) {
+        return 0;
+    }
+
+    *result = secp256k1_ec_pubkey_cmp(ctx, &a, &b);
+    return 1;
+}
+
+int shim_pubkey_sort(
+    const secp256k1_context *ctx,
+    unsigned char *pubkeys,
+    size_t pubkey_count
+) {
+    secp256k1_pubkey parsed[SHIM_MAX_COMBINE_PUBKEYS];
+    secp256k1_pubkey *ptrs[SHIM_MAX_COMBINE_PUBKEYS];
+    size_t i;
+
+    if (pubkey_count == 0 || pubkey_count > SHIM_MAX_COMBINE_PUBKEYS) {
+        return 0;
+    }
+
+    for (i = 0; i < pubkey_count; i++) {
+        unsigned char *key = pubkeys + (i * SHIM_PUBKEY_COMPRESSED_LEN);
+        if (!secp256k1_ec_pubkey_parse(ctx, &parsed[i], key, SHIM_PUBKEY_COMPRESSED_LEN)) {
+            return 0;
+        }
+        ptrs[i] = &parsed[i];
+    }
+
+    if (!secp256k1_ec_pubkey_sort(ctx, (const secp256k1_pubkey **)ptrs, pubkey_count)) {
+        return 0;
+    }
+
+    for (i = 0; i < pubkey_count; i++) {
+        unsigned char *key = pubkeys + (i * SHIM_PUBKEY_COMPRESSED_LEN);
+        size_t len = SHIM_PUBKEY_COMPRESSED_LEN;
+        if (!secp256k1_ec_pubkey_serialize(ctx, key, &len, ptrs[i], SECP256K1_EC_COMPRESSED)) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+/* ----------------------------------------------------------------- tweaks */
+
+int shim_seckey_tweak_add(
+    const secp256k1_context *ctx,
+    unsigned char seckey32[SHIM_SECKEY_LEN],
+    const unsigned char tweak32[SHIM_TWEAK_LEN]
+) {
+    return secp256k1_ec_seckey_tweak_add(ctx, seckey32, tweak32);
+}
+
+int shim_seckey_tweak_mul(
+    const secp256k1_context *ctx,
+    unsigned char seckey32[SHIM_SECKEY_LEN],
+    const unsigned char tweak32[SHIM_TWEAK_LEN]
+) {
+    return secp256k1_ec_seckey_tweak_mul(ctx, seckey32, tweak32);
+}
+
+int shim_pubkey_tweak_add(
+    const secp256k1_context *ctx,
+    const unsigned char *pubkey,
+    size_t pubkey_len,
+    const unsigned char tweak32[SHIM_TWEAK_LEN],
+    unsigned char *output,
+    size_t *output_len,
+    int compressed
+) {
+    secp256k1_pubkey parsed;
+    unsigned int flags = compressed ? SECP256K1_EC_COMPRESSED : SECP256K1_EC_UNCOMPRESSED;
+
+    if (!secp256k1_ec_pubkey_parse(ctx, &parsed, pubkey, pubkey_len)) {
+        return 0;
+    }
+    if (!secp256k1_ec_pubkey_tweak_add(ctx, &parsed, tweak32)) {
+        return 0;
+    }
+
+    return secp256k1_ec_pubkey_serialize(ctx, output, output_len, &parsed, flags);
+}
+
+int shim_pubkey_tweak_mul(
+    const secp256k1_context *ctx,
+    const unsigned char *pubkey,
+    size_t pubkey_len,
+    const unsigned char tweak32[SHIM_TWEAK_LEN],
+    unsigned char *output,
+    size_t *output_len,
+    int compressed
+) {
+    secp256k1_pubkey parsed;
+    unsigned int flags = compressed ? SECP256K1_EC_COMPRESSED : SECP256K1_EC_UNCOMPRESSED;
+
+    if (!secp256k1_ec_pubkey_parse(ctx, &parsed, pubkey, pubkey_len)) {
+        return 0;
+    }
+    if (!secp256k1_ec_pubkey_tweak_mul(ctx, &parsed, tweak32)) {
+        return 0;
+    }
+
+    return secp256k1_ec_pubkey_serialize(ctx, output, output_len, &parsed, flags);
+}
+
 /* ------------------------------------------------------------------ ECDSA */
 
 int shim_ecdsa_sign_compact(
@@ -234,4 +414,46 @@ int shim_ecdsa_signature_compact_to_der(
     }
 
     return secp256k1_ecdsa_signature_serialize_der(ctx, output, output_len, &sig);
+}
+
+/* -------------------------------------------------------------- recovery */
+
+int shim_ecdsa_sign_recoverable(
+    const secp256k1_context *ctx,
+    const unsigned char msg32[SHIM_MESSAGE_LEN],
+    const unsigned char seckey32[SHIM_SECKEY_LEN],
+    const unsigned char *aux_rand32,
+    unsigned char output64[SHIM_SIGNATURE_COMPACT_LEN],
+    int *recovery_id
+) {
+    secp256k1_ecdsa_recoverable_signature sig;
+
+    if (!secp256k1_ecdsa_sign_recoverable(ctx, &sig, msg32, seckey32, NULL, aux_rand32)) {
+        return 0;
+    }
+
+    return secp256k1_ecdsa_recoverable_signature_serialize_compact(ctx, output64, recovery_id, &sig);
+}
+
+int shim_ecdsa_recover(
+    const secp256k1_context *ctx,
+    const unsigned char msg32[SHIM_MESSAGE_LEN],
+    const unsigned char signature64[SHIM_SIGNATURE_COMPACT_LEN],
+    int recovery_id,
+    unsigned char *output,
+    size_t *output_len,
+    int compressed
+) {
+    secp256k1_ecdsa_recoverable_signature sig;
+    secp256k1_pubkey pubkey;
+    unsigned int flags = compressed ? SECP256K1_EC_COMPRESSED : SECP256K1_EC_UNCOMPRESSED;
+
+    if (!secp256k1_ecdsa_recoverable_signature_parse_compact(ctx, &sig, signature64, recovery_id)) {
+        return 0;
+    }
+    if (!secp256k1_ecdsa_recover(ctx, &pubkey, &sig, msg32)) {
+        return 0;
+    }
+
+    return secp256k1_ec_pubkey_serialize(ctx, output, output_len, &pubkey, flags);
 }
