@@ -2,6 +2,7 @@ package secp256k1
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 )
 
@@ -48,7 +49,7 @@ func TestPrivateKeyFromBytesRejectsInvalid(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := PrivateKeyFromBytes(tt.key); err != ErrInvalidPrivateKey {
+			if _, err := PrivateKeyFromBytes(tt.key); !errors.Is(err, ErrInvalidPrivateKey) {
 				t.Errorf("PrivateKeyFromBytes() error = %v, want %v", err, ErrInvalidPrivateKey)
 			}
 		})
@@ -132,7 +133,7 @@ func TestPublicKeyFromBytesRejectsInvalid(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := PublicKeyFromBytes(tt.input); err != ErrInvalidPublicKey {
+			if _, err := PublicKeyFromBytes(tt.input); !errors.Is(err, ErrInvalidPublicKey) {
 				t.Errorf("PublicKeyFromBytes() error = %v, want %v", err, ErrInvalidPublicKey)
 			}
 		})

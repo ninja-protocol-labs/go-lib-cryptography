@@ -2,6 +2,7 @@ package secp256k1
 
 import (
 	"crypto/sha256"
+	"errors"
 	"testing"
 )
 
@@ -100,7 +101,7 @@ func TestMusigAggregateKeysOrderMatters(t *testing.T) {
 }
 
 func TestMusigAggregateKeysRejectsEmpty(t *testing.T) {
-	if _, _, err := MusigAggregateKeys(nil); err != ErrMusigKeyAggFailed {
+	if _, _, err := MusigAggregateKeys(nil); !errors.Is(err, ErrMusigKeyAggFailed) {
 		t.Errorf("MusigAggregateKeys error = %v, want %v", err, ErrMusigKeyAggFailed)
 	}
 }
@@ -153,7 +154,7 @@ func TestParseMusigPubNonceRejectsInvalid(t *testing.T) {
 	for i := range garbage {
 		garbage[i] = 0xff
 	}
-	if _, err := ParseMusigPubNonce(garbage); err != ErrInvalidMusigPubNonce {
+	if _, err := ParseMusigPubNonce(garbage); !errors.Is(err, ErrInvalidMusigPubNonce) {
 		t.Errorf("ParseMusigPubNonce error = %v, want %v", err, ErrInvalidMusigPubNonce)
 	}
 }
@@ -172,7 +173,7 @@ func TestMusigAggNonceSerializeParseRoundTrip(t *testing.T) {
 }
 
 func TestMusigAggregateNoncesRejectsEmpty(t *testing.T) {
-	if _, err := MusigAggregateNonces(nil); err != ErrMusigNonceAggFailed {
+	if _, err := MusigAggregateNonces(nil); !errors.Is(err, ErrMusigNonceAggFailed) {
 		t.Errorf("MusigAggregateNonces error = %v, want %v", err, ErrMusigNonceAggFailed)
 	}
 }
@@ -183,7 +184,7 @@ func TestMusigSecnonceReuseRejected(t *testing.T) {
 	if _, err := s.secnonce1.Sign(s.priv1, s.cache, s.session); err != nil {
 		t.Fatalf("Sign failed: %v", err)
 	}
-	if _, err := s.secnonce1.Sign(s.priv1, s.cache, s.session); err != ErrMusigSecnonceReused {
+	if _, err := s.secnonce1.Sign(s.priv1, s.cache, s.session); !errors.Is(err, ErrMusigSecnonceReused) {
 		t.Errorf("second Sign on the same secnonce: error = %v, want %v", err, ErrMusigSecnonceReused)
 	}
 }
@@ -211,7 +212,7 @@ func TestParseMusigPartialSigRejectsInvalid(t *testing.T) {
 	for i := range garbage {
 		garbage[i] = 0xff
 	}
-	if _, err := ParseMusigPartialSig(garbage); err != ErrInvalidMusigPartialSig {
+	if _, err := ParseMusigPartialSig(garbage); !errors.Is(err, ErrInvalidMusigPartialSig) {
 		t.Errorf("ParseMusigPartialSig error = %v, want %v", err, ErrInvalidMusigPartialSig)
 	}
 }
@@ -237,7 +238,7 @@ func TestMusigVerifyPartialSigRejectsWrongPubnonceAndPubkey(t *testing.T) {
 
 func TestMusigAggregateSignaturesRejectsEmpty(t *testing.T) {
 	s := newMusigTwoSignerSession(t)
-	if _, err := MusigAggregateSignatures(s.session, nil); err != ErrMusigSigAggFailed {
+	if _, err := MusigAggregateSignatures(s.session, nil); !errors.Is(err, ErrMusigSigAggFailed) {
 		t.Errorf("MusigAggregateSignatures error = %v, want %v", err, ErrMusigSigAggFailed)
 	}
 }

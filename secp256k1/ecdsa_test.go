@@ -1,6 +1,7 @@
 package secp256k1
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/ninja-protocol-labs/go-lib-cryptography/secp256k1/internal"
@@ -157,7 +158,7 @@ func TestRecoverRejectsWrongRecoveryID(t *testing.T) {
 }
 
 func TestRecoverRejectsInvalidSignature(t *testing.T) {
-	if _, err := Recover(testMsg, []byte{0x01, 0x02}, 0); err != ErrInvalidSignature {
+	if _, err := Recover(testMsg, []byte{0x01, 0x02}, 0); !errors.Is(err, ErrInvalidSignature) {
 		t.Errorf("Recover error = %v, want %v", err, ErrInvalidSignature)
 	}
 }
@@ -436,7 +437,7 @@ func TestVerifyDERAllowHighS(t *testing.T) {
 func TestRecoverDigestRejectsInvalidSignature(t *testing.T) {
 	var digest [32]byte
 	copy(digest[:], testMsg)
-	if _, err := RecoverDigest(digest, []byte{0x01, 0x02}, 0); err != ErrInvalidSignature {
+	if _, err := RecoverDigest(digest, []byte{0x01, 0x02}, 0); !errors.Is(err, ErrInvalidSignature) {
 		t.Errorf("RecoverDigest error = %v, want %v", err, ErrInvalidSignature)
 	}
 }
