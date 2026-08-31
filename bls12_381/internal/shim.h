@@ -723,7 +723,12 @@ void shim_aggregated_in_g2(
 // Same buffer discipline as the pairing engine: the scratch space Pippenger's
 // algorithm needs is sized by a _sizeof call and allocated by the caller.
 // Points and scalars are contiguous flat arrays; nbits is the width of each
-// scalar in bits.
+// scalar in bits (all scalars share the same width).
+//
+// Same big-endian-in, capped-at-32-bytes contract as shim_p1_mult/
+// shim_p2_mult — blst_p1s_mult_pippenger's single-point fallback reduces to
+// the same little-endian primitive those are built on, so shim.c reverses
+// every scalar before calling it, for the same reason.
 // ---------------------------------------------------------------------------
 
 size_t shim_p1s_mult_pippenger_scratch_sizeof(
