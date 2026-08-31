@@ -1069,21 +1069,31 @@ void shim_p1s_mult_pippenger(
     size_t nbits,
     byte *scratch
 ) {
+    // blst_p1s_mult_pippenger's per-point fallback (npoints == 1) reduces to
+    // the same little-endian-scalar primitive blst_p1_mult itself is built
+    // on (see le_scalar_from_be's doc comment above) — so, same as
+    // shim_p1_mult, every scalar is reversed into a little-endian buffer
+    // here before blst ever sees it, keeping this shim's own big-endian
+    // convention uniform across both the single- and multi-point APIs.
     const blst_p1_affine **point_ptrs =
         __builtin_alloca((npoints + 1) * sizeof(blst_p1_affine *));
     const byte **scalar_ptrs =
         __builtin_alloca((npoints + 1) * sizeof(byte *));
+    byte *le_scalars = __builtin_alloca(npoints * SHIM_SCALAR_LEN);
     size_t scalar_stride = (nbits + 7) / 8;
+    size_t le_nbits = nbits;
     for (size_t i = 0; i < npoints; i++) {
         point_ptrs[i] = (const blst_p1_affine *)(points + i * SHIM_P1_AFFINE_LEN);
-        scalar_ptrs[i] = scalars + i * scalar_stride;
+        byte *le = le_scalars + i * SHIM_SCALAR_LEN;
+        le_nbits = le_scalar_from_be(le, scalars + i * scalar_stride, nbits);
+        scalar_ptrs[i] = le;
     }
     point_ptrs[npoints] = NULL;
     scalar_ptrs[npoints] = NULL;
 
     blst_p1 ret;
     blst_p1s_mult_pippenger(
-        &ret, point_ptrs, npoints, scalar_ptrs, nbits, (limb_t *)scratch
+        &ret, point_ptrs, npoints, scalar_ptrs, le_nbits, (limb_t *)scratch
     );
     blst_p1_to_affine((blst_p1_affine *)out, &ret);
 }
@@ -1102,21 +1112,26 @@ void shim_p2s_mult_pippenger(
     size_t nbits,
     byte *scratch
 ) {
+    // See shim_p1s_mult_pippenger — same little-endian-scalar trap, same fix.
     const blst_p2_affine **point_ptrs =
         __builtin_alloca((npoints + 1) * sizeof(blst_p2_affine *));
     const byte **scalar_ptrs =
         __builtin_alloca((npoints + 1) * sizeof(byte *));
+    byte *le_scalars = __builtin_alloca(npoints * SHIM_SCALAR_LEN);
     size_t scalar_stride = (nbits + 7) / 8;
+    size_t le_nbits = nbits;
     for (size_t i = 0; i < npoints; i++) {
         point_ptrs[i] = (const blst_p2_affine *)(points + i * SHIM_P2_AFFINE_LEN);
-        scalar_ptrs[i] = scalars + i * scalar_stride;
+        byte *le = le_scalars + i * SHIM_SCALAR_LEN;
+        le_nbits = le_scalar_from_be(le, scalars + i * scalar_stride, nbits);
+        scalar_ptrs[i] = le;
     }
     point_ptrs[npoints] = NULL;
     scalar_ptrs[npoints] = NULL;
 
     blst_p2 ret;
     blst_p2s_mult_pippenger(
-        &ret, point_ptrs, npoints, scalar_ptrs, nbits, (limb_t *)scratch
+        &ret, point_ptrs, npoints, scalar_ptrs, le_nbits, (limb_t *)scratch
     );
     blst_p2_to_affine((blst_p2_affine *)out, &ret);
 }
