@@ -1,6 +1,6 @@
 // Package internal is the cgo boundary for the vendored blst.
 //
-// Everything that touches C lives here; the public bls12_381 package consumes
+// Everything that touches C lives here; the public bls12381 package consumes
 // this one through plain Go types only. Keeping the boundary in a single
 // internal package means the exported API never leaks cgo details, and lets a
 // pure-Go backend be swapped in later without touching callers.

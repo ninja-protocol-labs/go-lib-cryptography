@@ -1,6 +1,6 @@
 [submodule "secp256k1/internal/lib/secp256k1"]
 	path = secp256k1/internal/lib/secp256k1
 	url = https://github.com/bitcoin-core/secp256k1.git
-[submodule "bls12_381/internal/lib/blst"]
-	path = bls12_381/internal/lib/blst
+[submodule "bls12381/internal/lib/blst"]
+	path = bls12381/internal/lib/blst
 	url = https://github.com/supranational/blst.git
