@@ -311,15 +311,41 @@ void shim_p1_double(
     blst_p1_to_affine((blst_p1_affine *)out, &pout);
 }
 
+// le_scalar_from_be reverses a big-endian scalar of up to SHIM_SCALAR_LEN
+// bytes into the little-endian form blst_p1_mult/blst_p2_mult actually want
+// (see shim_p1_mult's doc comment in shim.h). nbits is clamped to
+// SHIM_SCALAR_LEN*8 along with it, so a caller-supplied width can never walk
+// blst_{p1,p2}_mult past the fixed-size buffer this fills.
+static size_t le_scalar_from_be(
+    byte le[SHIM_SCALAR_LEN],
+    const byte *be,
+    size_t nbits
+) {
+    if (nbits > SHIM_SCALAR_LEN * 8) {
+        nbits = SHIM_SCALAR_LEN * 8;
+    }
+    size_t len = (nbits + 7) / 8;
+    for (size_t i = 0; i < SHIM_SCALAR_LEN; i++) {
+        le[i] = 0;
+    }
+    for (size_t i = 0; i < len; i++) {
+        le[i] = be[len - 1 - i];
+    }
+    return nbits;
+}
+
 void shim_p1_mult(
     byte out[SHIM_P1_AFFINE_LEN],
     const byte p[SHIM_P1_AFFINE_LEN],
     const byte *scalar,
     size_t nbits
 ) {
+    byte le[SHIM_SCALAR_LEN];
+    nbits = le_scalar_from_be(le, scalar, nbits);
+
     blst_p1 pp, pout;
     blst_p1_from_affine(&pp, (const blst_p1_affine *)p);
-    blst_p1_mult(&pout, &pp, scalar, nbits);
+    blst_p1_mult(&pout, &pp, le, nbits);
     blst_p1_to_affine((blst_p1_affine *)out, &pout);
 }
 
@@ -360,9 +386,12 @@ void shim_p2_mult(
     const byte *scalar,
     size_t nbits
 ) {
+    byte le[SHIM_SCALAR_LEN];
+    nbits = le_scalar_from_be(le, scalar, nbits);
+
     blst_p2 pp, pout;
     blst_p2_from_affine(&pp, (const blst_p2_affine *)p);
-    blst_p2_mult(&pout, &pp, scalar, nbits);
+    blst_p2_mult(&pout, &pp, le, nbits);
     blst_p2_to_affine((blst_p2_affine *)out, &pout);
 }
 
