@@ -35,5 +35,154 @@ package internal
 // here ever needs to keep pointing at Go memory (see shim.c).
 #cgo noescape shim_keygen
 #cgo nocallback shim_keygen
+#cgo noescape shim_sk_check
+#cgo nocallback shim_sk_check
+#cgo noescape shim_scalar_from_be_bytes
+#cgo nocallback shim_scalar_from_be_bytes
+#cgo noescape shim_sk_add
+#cgo nocallback shim_sk_add
+#cgo noescape shim_sk_sub
+#cgo nocallback shim_sk_sub
+#cgo noescape shim_sk_mul
+#cgo nocallback shim_sk_mul
+#cgo noescape shim_sk_inverse
+#cgo nocallback shim_sk_inverse
+#cgo noescape shim_sk_to_pk_in_g1_compressed
+#cgo nocallback shim_sk_to_pk_in_g1_compressed
+#cgo noescape shim_sk_to_pk_in_g1_serialized
+#cgo nocallback shim_sk_to_pk_in_g1_serialized
+#cgo noescape shim_sk_to_pk_in_g2_compressed
+#cgo nocallback shim_sk_to_pk_in_g2_compressed
+#cgo noescape shim_sk_to_pk_in_g2_serialized
+#cgo nocallback shim_sk_to_pk_in_g2_serialized
+#cgo noescape shim_p1_uncompress
+#cgo nocallback shim_p1_uncompress
+#cgo noescape shim_p1_deserialize
+#cgo nocallback shim_p1_deserialize
+#cgo noescape shim_p1_affine_compress
+#cgo nocallback shim_p1_affine_compress
+#cgo noescape shim_p1_affine_serialize
+#cgo nocallback shim_p1_affine_serialize
+#cgo noescape shim_p1_affine_on_curve
+#cgo nocallback shim_p1_affine_on_curve
+#cgo noescape shim_p1_affine_in_g1
+#cgo nocallback shim_p1_affine_in_g1
+#cgo noescape shim_p1_affine_is_inf
+#cgo nocallback shim_p1_affine_is_inf
+#cgo noescape shim_p1_affine_is_equal
+#cgo nocallback shim_p1_affine_is_equal
+#cgo noescape shim_p1_affine_generator
+#cgo nocallback shim_p1_affine_generator
+#cgo noescape shim_p1_add
+#cgo nocallback shim_p1_add
+#cgo noescape shim_p1_double
+#cgo nocallback shim_p1_double
+#cgo noescape shim_p1_mult
+#cgo nocallback shim_p1_mult
+#cgo noescape shim_p1_neg
+#cgo nocallback shim_p1_neg
+#cgo noescape shim_p2_uncompress
+#cgo nocallback shim_p2_uncompress
+#cgo noescape shim_p2_deserialize
+#cgo nocallback shim_p2_deserialize
+#cgo noescape shim_p2_affine_compress
+#cgo nocallback shim_p2_affine_compress
+#cgo noescape shim_p2_affine_serialize
+#cgo nocallback shim_p2_affine_serialize
+#cgo noescape shim_p2_affine_on_curve
+#cgo nocallback shim_p2_affine_on_curve
+#cgo noescape shim_p2_affine_in_g2
+#cgo nocallback shim_p2_affine_in_g2
+#cgo noescape shim_p2_affine_is_inf
+#cgo nocallback shim_p2_affine_is_inf
+#cgo noescape shim_p2_affine_is_equal
+#cgo nocallback shim_p2_affine_is_equal
+#cgo noescape shim_p2_affine_generator
+#cgo nocallback shim_p2_affine_generator
+#cgo noescape shim_p2_add
+#cgo nocallback shim_p2_add
+#cgo noescape shim_p2_double
+#cgo nocallback shim_p2_double
+#cgo noescape shim_p2_mult
+#cgo nocallback shim_p2_mult
+#cgo noescape shim_p2_neg
+#cgo nocallback shim_p2_neg
 */
 import "C"
+
+// These mirror shim.h's SHIM_*_LEN macros. gopls/GoLand have been observed
+// to mis-infer a cgo constant's type at call sites (see secp256k1's
+// internal/shim.go for the same issue and fix), so — same fix — these are
+// plain Go int literals, with the compile-time assertions below being what
+// actually keeps them from drifting out of sync with the C headers.
+const (
+	ScalarLen       = 32
+	P1CompressedLen = 48
+	P1SerializedLen = 96
+	P2CompressedLen = 96
+	P2SerializedLen = 192
+	P1AffineLen     = 96
+	P2AffineLen     = 192
+	Fp12Len         = 576
+	LinesLen        = 19584
+)
+
+// These mirror shim.h's SHIM_ERR_* codes — BLST_ERROR passed through
+// unchanged, so functions that parse or verify return one of these as a
+// plain int rather than a Go error: the internal package stays a thin
+// wrapper over blst's own result codes, and the public package (which does
+// know what each one should mean to a caller) is what turns them into
+// sentinel errors.
+const (
+	ErrSuccess = iota
+	ErrBadEncoding
+	ErrPointNotOnCurve
+	ErrPointNotInGroup
+	ErrAggrTypeMismatch
+	ErrVerifyFail
+	ErrPkIsInfinity
+	ErrBadScalar
+)
+
+var (
+	_ [ErrSuccess - int(C.SHIM_ERR_SUCCESS)]byte
+	_ [int(C.SHIM_ERR_SUCCESS) - ErrSuccess]byte
+	_ [ErrBadEncoding - int(C.SHIM_ERR_BAD_ENCODING)]byte
+	_ [int(C.SHIM_ERR_BAD_ENCODING) - ErrBadEncoding]byte
+	_ [ErrPointNotOnCurve - int(C.SHIM_ERR_POINT_NOT_ON_CURVE)]byte
+	_ [int(C.SHIM_ERR_POINT_NOT_ON_CURVE) - ErrPointNotOnCurve]byte
+	_ [ErrPointNotInGroup - int(C.SHIM_ERR_POINT_NOT_IN_GROUP)]byte
+	_ [int(C.SHIM_ERR_POINT_NOT_IN_GROUP) - ErrPointNotInGroup]byte
+	_ [ErrAggrTypeMismatch - int(C.SHIM_ERR_AGGR_TYPE_MISMATCH)]byte
+	_ [int(C.SHIM_ERR_AGGR_TYPE_MISMATCH) - ErrAggrTypeMismatch]byte
+	_ [ErrVerifyFail - int(C.SHIM_ERR_VERIFY_FAIL)]byte
+	_ [int(C.SHIM_ERR_VERIFY_FAIL) - ErrVerifyFail]byte
+	_ [ErrPkIsInfinity - int(C.SHIM_ERR_PK_IS_INFINITY)]byte
+	_ [int(C.SHIM_ERR_PK_IS_INFINITY) - ErrPkIsInfinity]byte
+	_ [ErrBadScalar - int(C.SHIM_ERR_BAD_SCALAR)]byte
+	_ [int(C.SHIM_ERR_BAD_SCALAR) - ErrBadScalar]byte
+)
+
+// An array size expression only compiles if it is non-negative, so each
+// pair — the difference taken in both directions — only compiles if the two
+// sides are equal; any drift fails the build immediately.
+var (
+	_ [ScalarLen - int(C.SHIM_SCALAR_LEN)]byte
+	_ [int(C.SHIM_SCALAR_LEN) - ScalarLen]byte
+	_ [P1CompressedLen - int(C.SHIM_P1_COMPRESSED_LEN)]byte
+	_ [int(C.SHIM_P1_COMPRESSED_LEN) - P1CompressedLen]byte
+	_ [P1SerializedLen - int(C.SHIM_P1_SERIALIZED_LEN)]byte
+	_ [int(C.SHIM_P1_SERIALIZED_LEN) - P1SerializedLen]byte
+	_ [P2CompressedLen - int(C.SHIM_P2_COMPRESSED_LEN)]byte
+	_ [int(C.SHIM_P2_COMPRESSED_LEN) - P2CompressedLen]byte
+	_ [P2SerializedLen - int(C.SHIM_P2_SERIALIZED_LEN)]byte
+	_ [int(C.SHIM_P2_SERIALIZED_LEN) - P2SerializedLen]byte
+	_ [P1AffineLen - int(C.SHIM_P1_AFFINE_LEN)]byte
+	_ [int(C.SHIM_P1_AFFINE_LEN) - P1AffineLen]byte
+	_ [P2AffineLen - int(C.SHIM_P2_AFFINE_LEN)]byte
+	_ [int(C.SHIM_P2_AFFINE_LEN) - P2AffineLen]byte
+	_ [Fp12Len - int(C.SHIM_FP12_LEN)]byte
+	_ [int(C.SHIM_FP12_LEN) - Fp12Len]byte
+	_ [LinesLen - int(C.SHIM_LINES_LEN)]byte
+	_ [int(C.SHIM_LINES_LEN) - LinesLen]byte
+)

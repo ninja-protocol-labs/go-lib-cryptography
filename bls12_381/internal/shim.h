@@ -281,8 +281,17 @@ void shim_p1_double(
     const byte a[SHIM_P1_AFFINE_LEN]
 );
 
-// shim_p1_mult multiplies p by an arbitrary-width big-endian scalar. nbits is
-// the scalar's width in bits, not bytes.
+// shim_p1_mult multiplies p by a big-endian scalar of up to SHIM_SCALAR_LEN
+// (32) bytes. nbits is the scalar's width in bits, not bytes — this exists
+// so a shorter scalar (e.g. a small blinding factor) doesn't have to be
+// padded out to the full 32 bytes first, not to support anything wider than
+// 32 bytes.
+//
+// blst_p1_mult's own scalar parameter is raw little-endian bytes, which
+// would be the one place in this shim that broke from every other
+// function's big-endian convention — shim.c reverses the input into a
+// 32-byte buffer before calling it, so that trap stays inside shim.c
+// instead of leaking into this API.
 void shim_p1_mult(
     byte out[SHIM_P1_AFFINE_LEN],
     const byte p[SHIM_P1_AFFINE_LEN],
@@ -306,6 +315,7 @@ void shim_p2_double(
     const byte a[SHIM_P2_AFFINE_LEN]
 );
 
+// See shim_p1_mult — same big-endian-in, capped-at-32-bytes contract.
 void shim_p2_mult(
     byte out[SHIM_P2_AFFINE_LEN],
     const byte p[SHIM_P2_AFFINE_LEN],
