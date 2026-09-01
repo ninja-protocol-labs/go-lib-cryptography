@@ -18,9 +18,6 @@ func TestGeneratePrivateKey(t *testing.T) {
 		t.Fatalf("GeneratePrivateKey failed: %v", err)
 	}
 
-	if len(priv1.Bytes()) != internal.ScalarLen {
-		t.Errorf("Bytes() length = %d, want %d", len(priv1.Bytes()), internal.ScalarLen)
-	}
 	if priv1.Equal(priv2) {
 		t.Error("two calls to GeneratePrivateKey produced the same key")
 	}
@@ -29,7 +26,8 @@ func TestGeneratePrivateKey(t *testing.T) {
 func TestPrivateKeyFromBytesRoundTrip(t *testing.T) {
 	priv := privKeyOne(t)
 
-	priv2, err := PrivateKeyFromBytes(priv.Bytes())
+	b := priv.Bytes()
+	priv2, err := PrivateKeyFromBytes(b[:])
 	if err != nil {
 		t.Fatalf("PrivateKeyFromBytes failed for a valid key: %v", err)
 	}
@@ -82,7 +80,7 @@ func TestPrivKeyOnePublicKeyMinPkIsTheGenerator(t *testing.T) {
 	g1 := internal.P1AffineGenerator()
 	want := internal.P1AffineCompress(&g1)
 
-	if got := priv.PublicKeyMinPk().Bytes(); !bytes.Equal(got, want[:]) {
+	if got := priv.PublicKeyMinPk().Bytes(); got != want {
 		t.Errorf("PublicKeyMinPk().Bytes() = %x, want %x", got, want)
 	}
 }
@@ -92,7 +90,7 @@ func TestPrivKeyOnePublicKeyMinSigIsTheGenerator(t *testing.T) {
 	g2 := internal.P2AffineGenerator()
 	want := internal.P2AffineCompress(&g2)
 
-	if got := priv.PublicKeyMinSig().Bytes(); !bytes.Equal(got, want[:]) {
+	if got := priv.PublicKeyMinSig().Bytes(); got != want {
 		t.Errorf("PublicKeyMinSig().Bytes() = %x, want %x", got, want)
 	}
 }
@@ -111,10 +109,6 @@ func TestPublicKeyMinPkIsDeterministicAndUnique(t *testing.T) {
 	if pubA1.Equal(pubB) {
 		t.Error("two different private keys produced Equal min-pk public keys")
 	}
-
-	if got := len(pubA1.Bytes()); got != internal.P1CompressedLen {
-		t.Errorf("PublicKeyMinPk().Bytes() length = %d, want %d", got, internal.P1CompressedLen)
-	}
 }
 
 func TestPublicKeyMinSigIsDeterministicAndUnique(t *testing.T) {
@@ -131,17 +125,14 @@ func TestPublicKeyMinSigIsDeterministicAndUnique(t *testing.T) {
 	if pubA1.Equal(pubB) {
 		t.Error("two different private keys produced Equal min-sig public keys")
 	}
-
-	if got := len(pubA1.Bytes()); got != internal.P2CompressedLen {
-		t.Errorf("PublicKeyMinSig().Bytes() length = %d, want %d", got, internal.P2CompressedLen)
-	}
 }
 
 func TestPublicKeyMinPkFromBytesRoundTrip(t *testing.T) {
 	priv := privKeyN(t, 7)
 	pub := priv.PublicKeyMinPk()
 
-	parsed, err := PublicKeyMinPkFromBytes(pub.Bytes())
+	b := pub.Bytes()
+	parsed, err := PublicKeyMinPkFromBytes(b[:])
 	if err != nil {
 		t.Fatalf("PublicKeyMinPkFromBytes failed for a valid key: %v", err)
 	}
@@ -173,7 +164,8 @@ func TestPublicKeyMinSigFromBytesRoundTrip(t *testing.T) {
 	priv := privKeyN(t, 8)
 	pub := priv.PublicKeyMinSig()
 
-	parsed, err := PublicKeyMinSigFromBytes(pub.Bytes())
+	b := pub.Bytes()
+	parsed, err := PublicKeyMinSigFromBytes(b[:])
 	if err != nil {
 		t.Fatalf("PublicKeyMinSigFromBytes failed for a valid key: %v", err)
 	}

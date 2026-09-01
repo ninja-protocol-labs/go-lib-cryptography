@@ -12,6 +12,11 @@ import "github.com/ninja-protocol-labs/go-lib-cryptography/bls12381/internal"
 // always addressable inside the method body, so &p below never needs an
 // intermediate copy to become one.
 
+// scalarBits is the bit width blst is told to walk for every scalar this
+// package hands it: the full width of a SeckeyLen-byte value, since that
+// is the only scalar shape the public API accepts.
+const scalarBits = SeckeyLen * 8
+
 // G1Point is a point on G1, in affine form.
 type G1Point [internal.P1AffineLen]byte
 
@@ -69,19 +74,13 @@ func G2PointFromCompressed(b []byte) (G2Point, error) {
 }
 
 // Bytes returns p's 48-byte compressed encoding.
-func (p G1Point) Bytes() []byte {
-	compressed := internal.P1AffineCompress((*[internal.P1AffineLen]byte)(&p))
-	out := make([]byte, internal.P1CompressedLen)
-	copy(out, compressed[:])
-	return out
+func (p G1Point) Bytes() [G1CompressedLen]byte {
+	return internal.P1AffineCompress((*[internal.P1AffineLen]byte)(&p))
 }
 
 // Bytes returns p's 96-byte compressed encoding.
-func (p G2Point) Bytes() []byte {
-	compressed := internal.P2AffineCompress((*[internal.P2AffineLen]byte)(&p))
-	out := make([]byte, internal.P2CompressedLen)
-	copy(out, compressed[:])
-	return out
+func (p G2Point) Bytes() [G2CompressedLen]byte {
+	return internal.P2AffineCompress((*[internal.P2AffineLen]byte)(&p))
 }
 
 func (p G1Point) Equal(q G1Point) bool {
@@ -124,15 +123,20 @@ func (p G2Point) Neg() G2Point {
 	return internal.P2Neg((*[internal.P2AffineLen]byte)(&p))
 }
 
-// Mul multiplies p by a big-endian scalar of up to 32 bytes. nbits is the
-// scalar's width in bits, not bytes.
-func (p G1Point) Mul(scalar []byte, nbits int) G1Point {
-	return internal.P1Mult((*[internal.P1AffineLen]byte)(&p), scalar, nbits)
+// Mul multiplies p by a big-endian 32-byte scalar.
+//
+// blst itself takes a bit width alongside the scalar, so a short scalar
+// can skip its leading zero bits. That argument is not part of this API:
+// with the scalar's width fixed by its type there is nothing left for it
+// to describe, and a width that disagreed with the array would silently
+// multiply by a different value.
+func (p G1Point) Mul(scalar [SeckeyLen]byte) G1Point {
+	return internal.P1Mult((*[internal.P1AffineLen]byte)(&p), scalar[:], scalarBits)
 }
 
 // Mul is Mul's mirror in G2.
-func (p G2Point) Mul(scalar []byte, nbits int) G2Point {
-	return internal.P2Mult((*[internal.P2AffineLen]byte)(&p), scalar, nbits)
+func (p G2Point) Mul(scalar [SeckeyLen]byte) G2Point {
+	return internal.P2Mult((*[internal.P2AffineLen]byte)(&p), scalar[:], scalarBits)
 }
 
 // HashToG1 implements RFC 9380 hash-to-curve into G1. dst is the domain
@@ -321,14 +325,14 @@ func (p *Pairing) ChkNAggrPkInG2(pk G2Point, pkGrpchk bool, sig *G1Point, sigGrp
 
 // MulNAggregatePkInG1 is AggregatePkInG1 with a per-entry random scalar
 // folded in, which is what makes batch verification sound against an
-// adversary who picked the signatures. scalar is big-endian, up to 32
-// bytes; nbits is its width in bits.
-func (p *Pairing) MulNAggregatePkInG1(pk G1Point, sig *G2Point, scalar []byte, nbits int, msg []byte) error {
+// adversary who picked the signatures. scalar is a big-endian 32-byte
+// value.
+func (p *Pairing) MulNAggregatePkInG1(pk G1Point, sig *G2Point, scalar [SeckeyLen]byte, msg []byte) error {
 	var sigBytes []byte
 	if sig != nil {
 		sigBytes = sig[:]
 	}
-	if internal.PairingMulNAggregatePkInG1(p.ctx, (*[internal.P1AffineLen]byte)(&pk), sigBytes, scalar, nbits, msg, nil) != internal.ErrSuccess {
+	if internal.PairingMulNAggregatePkInG1(p.ctx, (*[internal.P1AffineLen]byte)(&pk), sigBytes, scalar[:], scalarBits, msg, nil) != internal.ErrSuccess {
 		return ErrPairingFailed
 	}
 	return nil
@@ -336,12 +340,12 @@ func (p *Pairing) MulNAggregatePkInG1(pk G1Point, sig *G2Point, scalar []byte, n
 
 // MulNAggregatePkInG2 is MulNAggregatePkInG1's mirror for the min-sig
 // scheme.
-func (p *Pairing) MulNAggregatePkInG2(pk G2Point, sig *G1Point, scalar []byte, nbits int, msg []byte) error {
+func (p *Pairing) MulNAggregatePkInG2(pk G2Point, sig *G1Point, scalar [SeckeyLen]byte, msg []byte) error {
 	var sigBytes []byte
 	if sig != nil {
 		sigBytes = sig[:]
 	}
-	if internal.PairingMulNAggregatePkInG2(p.ctx, (*[internal.P2AffineLen]byte)(&pk), sigBytes, scalar, nbits, msg, nil) != internal.ErrSuccess {
+	if internal.PairingMulNAggregatePkInG2(p.ctx, (*[internal.P2AffineLen]byte)(&pk), sigBytes, scalar[:], scalarBits, msg, nil) != internal.ErrSuccess {
 		return ErrPairingFailed
 	}
 	return nil
@@ -350,24 +354,24 @@ func (p *Pairing) MulNAggregatePkInG2(pk G2Point, sig *G1Point, scalar []byte, n
 // ChkNMulNAggrPkInG1 combines ChkNAggrPkInG1's subgroup checks with
 // MulNAggregatePkInG1's random-scalar batching — the form to use for
 // batch-verifying signatures straight off the wire.
-func (p *Pairing) ChkNMulNAggrPkInG1(pk G1Point, pkGrpchk bool, sig *G2Point, sigGrpchk bool, scalar []byte, nbits int, msg []byte) error {
+func (p *Pairing) ChkNMulNAggrPkInG1(pk G1Point, pkGrpchk bool, sig *G2Point, sigGrpchk bool, scalar [SeckeyLen]byte, msg []byte) error {
 	var sigBytes []byte
 	if sig != nil {
 		sigBytes = sig[:]
 	}
-	if internal.PairingChkNMulNAggrPkInG1(p.ctx, (*[internal.P1AffineLen]byte)(&pk), pkGrpchk, sigBytes, sigGrpchk, scalar, nbits, msg, nil) != internal.ErrSuccess {
+	if internal.PairingChkNMulNAggrPkInG1(p.ctx, (*[internal.P1AffineLen]byte)(&pk), pkGrpchk, sigBytes, sigGrpchk, scalar[:], scalarBits, msg, nil) != internal.ErrSuccess {
 		return ErrPairingFailed
 	}
 	return nil
 }
 
 // ChkNMulNAggrPkInG2 is ChkNMulNAggrPkInG1's mirror for the min-sig scheme.
-func (p *Pairing) ChkNMulNAggrPkInG2(pk G2Point, pkGrpchk bool, sig *G1Point, sigGrpchk bool, scalar []byte, nbits int, msg []byte) error {
+func (p *Pairing) ChkNMulNAggrPkInG2(pk G2Point, pkGrpchk bool, sig *G1Point, sigGrpchk bool, scalar [SeckeyLen]byte, msg []byte) error {
 	var sigBytes []byte
 	if sig != nil {
 		sigBytes = sig[:]
 	}
-	if internal.PairingChkNMulNAggrPkInG2(p.ctx, (*[internal.P2AffineLen]byte)(&pk), pkGrpchk, sigBytes, sigGrpchk, scalar, nbits, msg, nil) != internal.ErrSuccess {
+	if internal.PairingChkNMulNAggrPkInG2(p.ctx, (*[internal.P2AffineLen]byte)(&pk), pkGrpchk, sigBytes, sigGrpchk, scalar[:], scalarBits, msg, nil) != internal.ErrSuccess {
 		return ErrPairingFailed
 	}
 	return nil

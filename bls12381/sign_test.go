@@ -1,20 +1,13 @@
 package bls12381
 
-import (
-	"testing"
-
-	"github.com/ninja-protocol-labs/go-lib-cryptography/bls12381/internal"
-)
+import "testing"
 
 func TestSignMinPkVerifyMinPkRoundTrip(t *testing.T) {
 	priv := privKeyN(t, 9)
 	pub := priv.PublicKeyMinPk()
 
 	sig := SignMinPk(priv, testMsg)
-	if len(sig) != internal.P2CompressedLen {
-		t.Fatalf("SignMinPk produced %d bytes, want %d", len(sig), internal.P2CompressedLen)
-	}
-	if !VerifyMinPk(pub, testMsg, sig) {
+	if !VerifyMinPk(pub, testMsg, sig[:]) {
 		t.Error("VerifyMinPk rejected a signature it just produced")
 	}
 }
@@ -24,10 +17,7 @@ func TestSignMinSigVerifyMinSigRoundTrip(t *testing.T) {
 	pub := priv.PublicKeyMinSig()
 
 	sig := SignMinSig(priv, testMsg)
-	if len(sig) != internal.P1CompressedLen {
-		t.Fatalf("SignMinSig produced %d bytes, want %d", len(sig), internal.P1CompressedLen)
-	}
-	if !VerifyMinSig(pub, testMsg, sig) {
+	if !VerifyMinSig(pub, testMsg, sig[:]) {
 		t.Error("VerifyMinSig rejected a signature it just produced")
 	}
 }
@@ -37,7 +27,7 @@ func TestSignMinPkIsDeterministic(t *testing.T) {
 
 	sig1 := SignMinPk(priv, testMsg)
 	sig2 := SignMinPk(priv, testMsg)
-	if string(sig1) != string(sig2) {
+	if sig1 != sig2 {
 		t.Error("SignMinPk produced different signatures for the same key/message")
 	}
 }
@@ -47,7 +37,7 @@ func TestSignMinSigIsDeterministic(t *testing.T) {
 
 	sig1 := SignMinSig(priv, testMsg)
 	sig2 := SignMinSig(priv, testMsg)
-	if string(sig1) != string(sig2) {
+	if sig1 != sig2 {
 		t.Error("SignMinSig produced different signatures for the same key/message")
 	}
 }
@@ -57,7 +47,7 @@ func TestVerifyMinPkRejectsWrongMessage(t *testing.T) {
 	pub := priv.PublicKeyMinPk()
 	sig := SignMinPk(priv, testMsg)
 
-	if VerifyMinPk(pub, []byte("a different message"), sig) {
+	if VerifyMinPk(pub, []byte("a different message"), sig[:]) {
 		t.Error("VerifyMinPk accepted a signature over the wrong message")
 	}
 }
@@ -67,7 +57,7 @@ func TestVerifyMinSigRejectsWrongMessage(t *testing.T) {
 	pub := priv.PublicKeyMinSig()
 	sig := SignMinSig(priv, testMsg)
 
-	if VerifyMinSig(pub, []byte("a different message"), sig) {
+	if VerifyMinSig(pub, []byte("a different message"), sig[:]) {
 		t.Error("VerifyMinSig accepted a signature over the wrong message")
 	}
 }
@@ -78,7 +68,7 @@ func TestVerifyMinPkRejectsWrongKey(t *testing.T) {
 	pubB := privB.PublicKeyMinPk()
 	sig := SignMinPk(privA, testMsg)
 
-	if VerifyMinPk(pubB, testMsg, sig) {
+	if VerifyMinPk(pubB, testMsg, sig[:]) {
 		t.Error("VerifyMinPk accepted a signature under the wrong public key")
 	}
 }
@@ -89,7 +79,7 @@ func TestVerifyMinSigRejectsWrongKey(t *testing.T) {
 	pubB := privB.PublicKeyMinSig()
 	sig := SignMinSig(privA, testMsg)
 
-	if VerifyMinSig(pubB, testMsg, sig) {
+	if VerifyMinSig(pubB, testMsg, sig[:]) {
 		t.Error("VerifyMinSig accepted a signature under the wrong public key")
 	}
 }
@@ -101,7 +91,8 @@ func TestVerifyMinPkRejectsMalformedInput(t *testing.T) {
 	if VerifyMinPk(pub, testMsg, nil) {
 		t.Error("VerifyMinPk accepted a nil signature")
 	}
-	if VerifyMinPk(nil, testMsg, SignMinPk(priv, testMsg)) {
+	sig := SignMinPk(priv, testMsg)
+	if VerifyMinPk(nil, testMsg, sig[:]) {
 		t.Error("VerifyMinPk accepted a nil public key")
 	}
 }
@@ -113,7 +104,8 @@ func TestVerifyMinSigRejectsMalformedInput(t *testing.T) {
 	if VerifyMinSig(pub, testMsg, nil) {
 		t.Error("VerifyMinSig accepted a nil signature")
 	}
-	if VerifyMinSig(nil, testMsg, SignMinSig(priv, testMsg)) {
+	sig := SignMinSig(priv, testMsg)
+	if VerifyMinSig(nil, testMsg, sig[:]) {
 		t.Error("VerifyMinSig accepted a nil public key")
 	}
 }
@@ -126,13 +118,13 @@ func TestSignMinPkWithDSTChangesSignature(t *testing.T) {
 	customDST := []byte("BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_CUSTOM_")
 	customSig := SignMinPkWithDST(priv, testMsg, customDST)
 
-	if string(defaultSig) == string(customSig) {
+	if defaultSig == customSig {
 		t.Error("SignMinPkWithDST produced the same signature as the default DST")
 	}
-	if !VerifyMinPkWithDST(pub, testMsg, customSig, customDST) {
+	if !VerifyMinPkWithDST(pub, testMsg, customSig[:], customDST) {
 		t.Error("VerifyMinPkWithDST rejected a signature made with the matching custom DST")
 	}
-	if VerifyMinPk(pub, testMsg, customSig) {
+	if VerifyMinPk(pub, testMsg, customSig[:]) {
 		t.Error("VerifyMinPk (default DST) accepted a signature made with a different DST")
 	}
 }
@@ -145,13 +137,13 @@ func TestSignMinSigWithDSTChangesSignature(t *testing.T) {
 	customDST := []byte("BLS_SIG_BLS12381G1_XMD:SHA-256_SSWU_RO_CUSTOM_")
 	customSig := SignMinSigWithDST(priv, testMsg, customDST)
 
-	if string(defaultSig) == string(customSig) {
+	if defaultSig == customSig {
 		t.Error("SignMinSigWithDST produced the same signature as the default DST")
 	}
-	if !VerifyMinSigWithDST(pub, testMsg, customSig, customDST) {
+	if !VerifyMinSigWithDST(pub, testMsg, customSig[:], customDST) {
 		t.Error("VerifyMinSigWithDST rejected a signature made with the matching custom DST")
 	}
-	if VerifyMinSig(pub, testMsg, customSig) {
+	if VerifyMinSig(pub, testMsg, customSig[:]) {
 		t.Error("VerifyMinSig (default DST) accepted a signature made with a different DST")
 	}
 }

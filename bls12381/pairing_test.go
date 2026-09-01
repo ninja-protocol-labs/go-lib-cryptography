@@ -6,7 +6,8 @@ func TestG1PointFromCompressedRoundTrip(t *testing.T) {
 	priv := privKeyN(t, 40)
 	pub := priv.PublicKeyMinPk()
 
-	p, err := G1PointFromCompressed(pub.Bytes())
+	b := pub.Bytes()
+	p, err := G1PointFromCompressed(b[:])
 	if err != nil {
 		t.Fatalf("G1PointFromCompressed failed: %v", err)
 	}
@@ -33,9 +34,7 @@ func TestG1ArithmeticAgreesWithScalarMult(t *testing.T) {
 		t.Error("G1Generator().Double() != G1Generator().Add(itself)")
 	}
 
-	two := make([]byte, 32)
-	two[31] = 2
-	mult := g.Mul(two, 256)
+	mult := g.Mul(scalarN(2))
 	if mult != doubled {
 		t.Error("G1Generator().Mul(2) != G1Generator().Double()")
 	}
@@ -60,9 +59,7 @@ func TestG2ArithmeticAgreesWithScalarMult(t *testing.T) {
 		t.Error("G2Generator().Double() != G2Generator().Add(itself)")
 	}
 
-	two := make([]byte, 32)
-	two[31] = 2
-	mult := g.Mul(two, 256)
+	mult := g.Mul(scalarN(2))
 	if mult != doubled {
 		t.Error("G2Generator().Mul(2) != G2Generator().Double()")
 	}
@@ -146,7 +143,8 @@ func TestMillerLoopNRejectsLengthMismatch(t *testing.T) {
 func TestPairingAggregatePkInG1AndFinalVerify(t *testing.T) {
 	priv := privKeyN(t, 42)
 	pub := G1Point(priv.PublicKeyMinPk().point)
-	sig, err := G2PointFromCompressed(SignMinPk(priv, testMsg))
+	sigBytes := SignMinPk(priv, testMsg)
+	sig, err := G2PointFromCompressed(sigBytes[:])
 	if err != nil {
 		t.Fatalf("G2PointFromCompressed failed: %v", err)
 	}
@@ -164,7 +162,8 @@ func TestPairingAggregatePkInG1AndFinalVerify(t *testing.T) {
 func TestPairingAggregatePkInG1RejectsWrongMessage(t *testing.T) {
 	priv := privKeyN(t, 43)
 	pub := G1Point(priv.PublicKeyMinPk().point)
-	sig, err := G2PointFromCompressed(SignMinPk(priv, testMsg))
+	sigBytes := SignMinPk(priv, testMsg)
+	sig, err := G2PointFromCompressed(sigBytes[:])
 	if err != nil {
 		t.Fatalf("G2PointFromCompressed failed: %v", err)
 	}
@@ -183,7 +182,7 @@ func TestPairingSeparateGtsig(t *testing.T) {
 	priv := privKeyN(t, 44)
 	pub := G1Point(priv.PublicKeyMinPk().point)
 	sig := SignMinPk(priv, testMsg)
-	sigPoint, err := G2PointFromCompressed(sig)
+	sigPoint, err := G2PointFromCompressed(sig[:])
 	if err != nil {
 		t.Fatalf("G2PointFromCompressed failed: %v", err)
 	}
@@ -204,7 +203,8 @@ func TestPairingSeparateGtsigMinSig(t *testing.T) {
 	// min-sig direction (pk in G2, sig in G1).
 	priv := privKeyN(t, 49)
 	pub := G2Point(priv.PublicKeyMinSig().point)
-	sig, err := G1PointFromCompressed(SignMinSig(priv, testMsg))
+	sigBytes := SignMinSig(priv, testMsg)
+	sig, err := G1PointFromCompressed(sigBytes[:])
 	if err != nil {
 		t.Fatalf("G1PointFromCompressed failed: %v", err)
 	}
@@ -226,11 +226,13 @@ func TestPairingMerge(t *testing.T) {
 	pubA := G1Point(privA.PublicKeyMinPk().point)
 	pubB := G1Point(privB.PublicKeyMinPk().point)
 	msgA, msgB := []byte("message A"), []byte("message B")
-	sigA, err := G2PointFromCompressed(SignMinPk(privA, msgA))
+	sigABytes := SignMinPk(privA, msgA)
+	sigA, err := G2PointFromCompressed(sigABytes[:])
 	if err != nil {
 		t.Fatalf("G2PointFromCompressed (A) failed: %v", err)
 	}
-	sigB, err := G2PointFromCompressed(SignMinPk(privB, msgB))
+	sigBBytes := SignMinPk(privB, msgB)
+	sigB, err := G2PointFromCompressed(sigBBytes[:])
 	if err != nil {
 		t.Fatalf("G2PointFromCompressed (B) failed: %v", err)
 	}
@@ -261,25 +263,24 @@ func TestPairingChkNMulNAggrPkInG1Batch(t *testing.T) {
 	pubA := G1Point(privA.PublicKeyMinPk().point)
 	pubB := G1Point(privB.PublicKeyMinPk().point)
 	msgA, msgB := []byte("message A"), []byte("message B")
-	sigA, err := G2PointFromCompressed(SignMinPk(privA, msgA))
+	sigABytes := SignMinPk(privA, msgA)
+	sigA, err := G2PointFromCompressed(sigABytes[:])
 	if err != nil {
 		t.Fatalf("G2PointFromCompressed (A) failed: %v", err)
 	}
-	sigB, err := G2PointFromCompressed(SignMinPk(privB, msgB))
+	sigBBytes := SignMinPk(privB, msgB)
+	sigB, err := G2PointFromCompressed(sigBBytes[:])
 	if err != nil {
 		t.Fatalf("G2PointFromCompressed (B) failed: %v", err)
 	}
 
-	scalarA := make([]byte, 32)
-	scalarA[31] = 7
-	scalarB := make([]byte, 32)
-	scalarB[31] = 11
+	scalarA, scalarB := scalarN(7), scalarN(11)
 
 	p := NewPairing(true, []byte(DefaultDSTMinPk))
-	if err := p.ChkNMulNAggrPkInG1(pubA, true, &sigA, true, scalarA, 256, msgA); err != nil {
+	if err := p.ChkNMulNAggrPkInG1(pubA, true, &sigA, true, scalarA, msgA); err != nil {
 		t.Fatalf("ChkNMulNAggrPkInG1 (A) failed: %v", err)
 	}
-	if err := p.ChkNMulNAggrPkInG1(pubB, true, &sigB, true, scalarB, 256, msgB); err != nil {
+	if err := p.ChkNMulNAggrPkInG1(pubB, true, &sigB, true, scalarB, msgB); err != nil {
 		t.Fatalf("ChkNMulNAggrPkInG1 (B) failed: %v", err)
 	}
 	p.Commit()

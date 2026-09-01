@@ -4,35 +4,29 @@ import "github.com/ninja-protocol-labs/go-lib-cryptography/bls12381/internal"
 
 // SignMinPk signs msg with priv under the min-pk scheme (signature in G2),
 // using DefaultDSTMinPk.
-func SignMinPk(priv *PrivateKey, msg []byte) []byte {
+func SignMinPk(priv *PrivateKey, msg []byte) [SignatureMinPkLen]byte {
 	return SignMinPkWithDST(priv, msg, []byte(DefaultDSTMinPk))
 }
 
 // SignMinPkWithDST is SignMinPk with a caller-supplied domain separation
 // tag, for applications that need a ciphersuite other than the default.
-func SignMinPkWithDST(priv *PrivateKey, msg, dst []byte) []byte {
-	sig := internal.SignMsgPkInG1(&priv.key, msg, dst, nil)
-	out := make([]byte, internal.P2CompressedLen)
-	copy(out, sig[:])
-	return out
+func SignMinPkWithDST(priv *PrivateKey, msg, dst []byte) [SignatureMinPkLen]byte {
+	return internal.SignMsgPkInG1(&priv.key, msg, dst, nil)
 }
 
 // SignMinSig signs msg with priv under the min-sig scheme (signature in
 // G1), using DefaultDSTMinSig.
-func SignMinSig(priv *PrivateKey, msg []byte) []byte {
+func SignMinSig(priv *PrivateKey, msg []byte) [SignatureMinSigLen]byte {
 	return SignMinSigWithDST(priv, msg, []byte(DefaultDSTMinSig))
 }
 
 // SignMinSigWithDST is SignMinSig with a caller-supplied domain separation
 // tag.
-func SignMinSigWithDST(priv *PrivateKey, msg, dst []byte) []byte {
-	sig := internal.SignMsgPkInG2(&priv.key, msg, dst, nil)
-	out := make([]byte, internal.P1CompressedLen)
-	copy(out, sig[:])
-	return out
+func SignMinSigWithDST(priv *PrivateKey, msg, dst []byte) [SignatureMinSigLen]byte {
+	return internal.SignMsgPkInG2(&priv.key, msg, dst, nil)
 }
 
-// VerifyMinPk verifies sig (P2CompressedLen bytes) over msg against pub,
+// VerifyMinPk verifies sig (SignatureMinPkLen bytes) over msg against pub,
 // using DefaultDSTMinPk. Reports false for any malformed input — a bad
 // encoding is not distinguished from a genuinely invalid signature.
 func VerifyMinPk(pub *PublicKeyMinPk, msg, sig []byte) bool {
@@ -55,7 +49,7 @@ func VerifyMinPkWithDST(pub *PublicKeyMinPk, msg, sig, dst []byte) bool {
 	return internal.CoreVerifyPkInG1(&pub.point, &sigPoint, true, msg, dst, nil) == internal.ErrSuccess
 }
 
-// VerifyMinSig verifies sig (P1CompressedLen bytes) over msg against pub,
+// VerifyMinSig verifies sig (SignatureMinSigLen bytes) over msg against pub,
 // using DefaultDSTMinSig.
 func VerifyMinSig(pub *PublicKeyMinSig, msg, sig []byte) bool {
 	return VerifyMinSigWithDST(pub, msg, sig, []byte(DefaultDSTMinSig))
