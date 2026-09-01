@@ -1,7 +1,6 @@
 package secp256r1
 
 import (
-	"bytes"
 	"errors"
 	"testing"
 )
@@ -27,7 +26,8 @@ func TestGeneratePrivateKey(t *testing.T) {
 func TestPrivateKeyFromBytesRoundTrip(t *testing.T) {
 	priv := seckeyOne(t)
 
-	priv2, err := PrivateKeyFromBytes(priv.Bytes())
+	privBytes := priv.Bytes()
+	priv2, err := PrivateKeyFromBytes(privBytes[:])
 	if err != nil {
 		t.Fatalf("PrivateKeyFromBytes failed for a valid key: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestSeckeyOnePublicKey(t *testing.T) {
 		t.Fatalf("PublicKey failed: %v", err)
 	}
 
-	if got := pub.Bytes(); !bytes.Equal(got, seckeyOnePubkeyCompressed) {
+	if got := pub.Bytes(); got != [PubkeyCompressedLen]byte(seckeyOnePubkeyCompressed) {
 		t.Errorf("PublicKey().Bytes() = %x, want %x", got, seckeyOnePubkeyCompressed)
 	}
 
@@ -88,7 +88,7 @@ func TestSeckeyOnePublicKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BytesUncompressed failed: %v", err)
 	}
-	if !bytes.Equal(uncompressed, seckeyOnePubkeyUncompressed) {
+	if uncompressed != [PubkeyUncompressedLen]byte(seckeyOnePubkeyUncompressed) {
 		t.Errorf("BytesUncompressed() = %x, want %x", uncompressed, seckeyOnePubkeyUncompressed)
 	}
 }
@@ -108,7 +108,7 @@ func TestPublicKeyFromBytesRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatalf("PublicKeyFromBytes failed for a valid key: %v", err)
 			}
-			if got := pub.Bytes(); !bytes.Equal(got, seckeyOnePubkeyCompressed) {
+			if got := pub.Bytes(); got != [PubkeyCompressedLen]byte(seckeyOnePubkeyCompressed) {
 				t.Errorf("PublicKeyFromBytes(...).Bytes() = %x, want %x", got, seckeyOnePubkeyCompressed)
 			}
 		})

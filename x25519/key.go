@@ -68,12 +68,9 @@ func PrivateKeyFromBytes(b []byte) (*PrivateKey, error) {
 	}, nil
 }
 
-// Bytes returns the 32-byte scalar. The returned slice is a copy; mutating
-// it does not affect k.
-func (k *PrivateKey) Bytes() []byte {
-	out := make([]byte, SeckeyLen)
-	copy(out, k.key[:])
-	return out
+// Bytes returns the 32-byte scalar.
+func (k *PrivateKey) Bytes() [SeckeyLen]byte {
+	return k.key
 }
 
 // PublicKey derives the public key corresponding to k. See the package doc
@@ -113,12 +110,9 @@ func PublicKeyFromBytes(b []byte) (*PublicKey, error) {
 	}, nil
 }
 
-// Bytes returns the 32-byte u-coordinate. The returned slice is a copy;
-// mutating it does not affect k.
-func (k *PublicKey) Bytes() []byte {
-	out := make([]byte, PubkeyLen)
-	copy(out, k.key[:])
-	return out
+// Bytes returns the 32-byte u-coordinate.
+func (k *PublicKey) Bytes() [PubkeyLen]byte {
+	return k.key
 }
 
 // Equal reports whether k and other are the same key.

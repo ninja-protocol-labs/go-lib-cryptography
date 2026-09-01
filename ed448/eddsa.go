@@ -27,11 +27,11 @@ import (
 // can fail on this one input.
 
 // Sign signs message with priv using Ed448, domain-separated by context.
-func Sign(priv *PrivateKey, message, context []byte) ([]byte, error) {
+func Sign(priv *PrivateKey, message, context []byte) ([SignatureLen]byte, error) {
 	if len(context) > ContextMaxLen {
-		return nil, ErrContextTooLong
+		return [SignatureLen]byte{}, ErrContextTooLong
 	}
-	return ed.Sign(priv.expand(), message, string(context)), nil
+	return [SignatureLen]byte(ed.Sign(priv.expand(), message, string(context))), nil
 }
 
 // Verify reports whether sig is a valid Ed448 signature of message by pub
@@ -43,11 +43,11 @@ func Verify(pub *PublicKey, message, sig, context []byte) bool {
 // SignPh signs message with priv using Ed448ph, domain-separated by
 // context. Unlike ed25519's SignPh, message is the raw message — circl
 // hashes it internally rather than taking a caller-supplied digest.
-func SignPh(priv *PrivateKey, message, context []byte) ([]byte, error) {
+func SignPh(priv *PrivateKey, message, context []byte) ([SignatureLen]byte, error) {
 	if len(context) > ContextMaxLen {
-		return nil, ErrContextTooLong
+		return [SignatureLen]byte{}, ErrContextTooLong
 	}
-	return ed.SignPh(priv.expand(), message, string(context)), nil
+	return [SignatureLen]byte(ed.SignPh(priv.expand(), message, string(context))), nil
 }
 
 // VerifyPh reports whether sig is a valid Ed448ph signature of message by

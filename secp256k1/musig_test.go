@@ -140,7 +140,7 @@ func TestMusigPubNonceSerializeParseRoundTrip(t *testing.T) {
 	}
 
 	wire := pubnonce.Bytes()
-	parsed, err := ParseMusigPubNonce(wire)
+	parsed, err := ParseMusigPubNonce(wire[:])
 	if err != nil {
 		t.Fatalf("ParseMusigPubNonce failed: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestParseMusigPubNonceRejectsInvalid(t *testing.T) {
 	for i := range garbage {
 		garbage[i] = 0xff
 	}
-	if _, err := ParseMusigPubNonce(garbage); !errors.Is(err, ErrInvalidMusigPubNonce) {
+	if _, err := ParseMusigPubNonce(garbage[:]); !errors.Is(err, ErrInvalidMusigPubNonce) {
 		t.Errorf("ParseMusigPubNonce error = %v, want %v", err, ErrInvalidMusigPubNonce)
 	}
 }
@@ -163,7 +163,7 @@ func TestMusigAggNonceSerializeParseRoundTrip(t *testing.T) {
 	s := newMusigTwoSignerSession(t)
 
 	wire := s.aggNonce.Bytes()
-	parsed, err := ParseMusigAggNonce(wire)
+	parsed, err := ParseMusigAggNonce(wire[:])
 	if err != nil {
 		t.Fatalf("ParseMusigAggNonce failed: %v", err)
 	}
@@ -198,7 +198,7 @@ func TestMusigPartialSigSerializeParseRoundTrip(t *testing.T) {
 	}
 
 	wire := sig1.Bytes()
-	parsed, err := ParseMusigPartialSig(wire)
+	parsed, err := ParseMusigPartialSig(wire[:])
 	if err != nil {
 		t.Fatalf("ParseMusigPartialSig failed: %v", err)
 	}
@@ -212,7 +212,7 @@ func TestParseMusigPartialSigRejectsInvalid(t *testing.T) {
 	for i := range garbage {
 		garbage[i] = 0xff
 	}
-	if _, err := ParseMusigPartialSig(garbage); !errors.Is(err, ErrInvalidMusigPartialSig) {
+	if _, err := ParseMusigPartialSig(garbage[:]); !errors.Is(err, ErrInvalidMusigPartialSig) {
 		t.Errorf("ParseMusigPartialSig error = %v, want %v", err, ErrInvalidMusigPartialSig)
 	}
 }
@@ -271,7 +271,7 @@ func TestMusigFullSessionProducesValidSignature(t *testing.T) {
 		t.Fatalf("MusigAggregateSignatures failed: %v", err)
 	}
 
-	if !VerifySchnorr(s.aggPk, musigTestDigest[:], finalSig) {
+	if !VerifySchnorr(s.aggPk, musigTestDigest[:], finalSig[:]) {
 		t.Error("the aggregated MuSig2 signature does not verify as an ordinary Schnorr signature over the aggregate key")
 	}
 }

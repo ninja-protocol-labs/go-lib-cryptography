@@ -1,7 +1,6 @@
 package ed25519
 
 import (
-	"bytes"
 	"crypto/sha512"
 	"errors"
 	"testing"
@@ -13,7 +12,7 @@ import (
 func TestSignMatchesRFC8032Vector1(t *testing.T) {
 	priv := seckeyOne(t)
 	sig := Sign(priv, []byte{})
-	if !bytes.Equal(sig, rfc8032Test1Sig) {
+	if sig != [SignatureLen]byte(rfc8032Test1Sig) {
 		t.Errorf("Sign(seed, \"\") = %x, want %x", sig, rfc8032Test1Sig)
 	}
 }
@@ -23,7 +22,7 @@ func TestSignVerifyRoundTrip(t *testing.T) {
 	pub := priv.PublicKey()
 
 	sig := Sign(priv, testMsg)
-	if !Verify(pub, testMsg, sig) {
+	if !Verify(pub, testMsg, sig[:]) {
 		t.Error("Verify rejected a signature Sign just produced")
 	}
 }
@@ -32,7 +31,7 @@ func TestSignIsDeterministic(t *testing.T) {
 	priv := seckeyOne(t)
 	sig1 := Sign(priv, testMsg)
 	sig2 := Sign(priv, testMsg)
-	if !bytes.Equal(sig1, sig2) {
+	if sig1 != sig2 {
 		t.Error("Sign produced two different signatures for the same key and message")
 	}
 }
@@ -44,10 +43,10 @@ func TestVerifyRejectsWrongMessageAndKey(t *testing.T) {
 
 	sig := Sign(priv, testMsg)
 
-	if Verify(pub, append(append([]byte{}, testMsg...), 0x00), sig) {
+	if Verify(pub, append(append([]byte{}, testMsg...), 0x00), sig[:]) {
 		t.Error("Verify accepted a signature under a modified message")
 	}
-	if Verify(otherPub, testMsg, sig) {
+	if Verify(otherPub, testMsg, sig[:]) {
 		t.Error("Verify accepted a signature under the wrong public key")
 	}
 }
@@ -61,7 +60,7 @@ func TestSignCtxVerifyCtxRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SignContext failed: %v", err)
 	}
-	if !VerifyCtx(pub, testMsg, context, sig) {
+	if !VerifyCtx(pub, testMsg, context, sig[:]) {
 		t.Error("VerifyContext rejected a signature SignContext just produced")
 	}
 }
@@ -74,12 +73,12 @@ func TestVerifyCtxRejectsWrongContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SignContext failed: %v", err)
 	}
-	if VerifyCtx(pub, testMsg, []byte("context B"), sig) {
+	if VerifyCtx(pub, testMsg, []byte("context B"), sig[:]) {
 		t.Error("VerifyContext accepted a signature under the wrong context string")
 	}
 	// A ctx-variant signature must not verify as a plain-Ed25519 signature
 	// either — they are domain-separated, not just optionally tagged.
-	if Verify(pub, testMsg, sig) {
+	if Verify(pub, testMsg, sig[:]) {
 		t.Error("Verify (pure Ed25519) accepted an Ed25519ctx signature")
 	}
 }
@@ -101,7 +100,7 @@ func TestSignPhVerifyPhRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SignPh failed: %v", err)
 	}
-	if !VerifyPh(pub, digest, context, sig) {
+	if !VerifyPh(pub, digest, context, sig[:]) {
 		t.Error("VerifyPh rejected a signature SignPh just produced")
 	}
 }
@@ -115,7 +114,7 @@ func TestSignPhWithEmptyContextRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SignPh failed: %v", err)
 	}
-	if !VerifyPh(pub, digest, nil, sig) {
+	if !VerifyPh(pub, digest, nil, sig[:]) {
 		t.Error("VerifyPh rejected a signature SignPh just produced")
 	}
 }
@@ -131,10 +130,10 @@ func TestVerifyPhRejectsWrongDigestAndContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SignPh failed: %v", err)
 	}
-	if VerifyPh(pub, otherDigest, context, sig) {
+	if VerifyPh(pub, otherDigest, context, sig[:]) {
 		t.Error("VerifyPh accepted a signature under the wrong digest")
 	}
-	if VerifyPh(pub, digest, []byte("different context"), sig) {
+	if VerifyPh(pub, digest, []byte("different context"), sig[:]) {
 		t.Error("VerifyPh accepted a signature under the wrong context string")
 	}
 }
@@ -158,7 +157,7 @@ func TestVerifyContextRejectsEmptyContext(t *testing.T) {
 	// as plain Ed25519 and accept it, defeating the whole point of a
 	// separately named context-verification function.
 	sig := Sign(priv, testMsg)
-	if VerifyCtx(pub, testMsg, nil, sig) {
+	if VerifyCtx(pub, testMsg, nil, sig[:]) {
 		t.Error("VerifyContext with an empty context accepted a plain-Ed25519 signature")
 	}
 }

@@ -13,11 +13,8 @@ func TestSignCompactVerifyCompactRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SignCompact failed: %v", err)
 	}
-	if len(sig) != 64 {
-		t.Fatalf("SignCompact produced %d bytes, want 64", len(sig))
-	}
 
-	if !VerifyCompact(pub, testMsg, sig) {
+	if !VerifyCompact(pub, testMsg, sig[:]) {
 		t.Error("VerifyCompact rejected a signature it just produced")
 	}
 }
@@ -34,7 +31,7 @@ func TestSignDERVerifyDERRoundTrip(t *testing.T) {
 		t.Fatalf("SignDER failed: %v", err)
 	}
 
-	if !VerifyDER(pub, testMsg, sig) {
+	if !VerifyDER(pub, testMsg, sig[:]) {
 		t.Error("VerifyDER rejected a signature it just produced")
 	}
 }
@@ -52,7 +49,7 @@ func TestSignDigestCompactRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SignDigestCompact failed: %v", err)
 	}
-	if !VerifyDigestCompact(pub, digest, sig) {
+	if !VerifyDigestCompact(pub, digest, sig[:]) {
 		t.Error("VerifyDigestCompact rejected a signature it just produced")
 	}
 }
@@ -70,7 +67,7 @@ func TestSignDigestDERRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SignDigestDER failed: %v", err)
 	}
-	if !VerifyDigestDER(pub, digest, sig) {
+	if !VerifyDigestDER(pub, digest, sig[:]) {
 		t.Error("VerifyDigestDER rejected a signature it just produced")
 	}
 }
@@ -95,10 +92,10 @@ func TestSignCompactVariesButBothVerify(t *testing.T) {
 		t.Fatalf("SignCompact failed: %v", err)
 	}
 
-	if string(sig1) == string(sig2) {
+	if sig1 == sig2 {
 		t.Error("SignCompact produced identical signatures across two calls")
 	}
-	if !VerifyCompact(pub, testMsg, sig1) || !VerifyCompact(pub, testMsg, sig2) {
+	if !VerifyCompact(pub, testMsg, sig1[:]) || !VerifyCompact(pub, testMsg, sig2[:]) {
 		t.Error("VerifyCompact rejected one of two independently-signed signatures")
 	}
 }
@@ -119,10 +116,10 @@ func TestVerifyCompactRejectsWrongKeyMessageAndLength(t *testing.T) {
 		t.Fatalf("SignCompact failed: %v", err)
 	}
 
-	if VerifyCompact(otherPub, testMsg, sig) {
+	if VerifyCompact(otherPub, testMsg, sig[:]) {
 		t.Error("VerifyCompact accepted a signature under the wrong public key")
 	}
-	if VerifyCompact(pub, []byte("a different message"), sig) {
+	if VerifyCompact(pub, []byte("a different message"), sig[:]) {
 		t.Error("VerifyCompact accepted a signature over the wrong message")
 	}
 	if VerifyCompact(pub, testMsg, sig[:len(sig)-1]) {
@@ -146,10 +143,10 @@ func TestVerifyDERRejectsWrongKeyAndMessage(t *testing.T) {
 		t.Fatalf("SignDER failed: %v", err)
 	}
 
-	if VerifyDER(otherPub, testMsg, sig) {
+	if VerifyDER(otherPub, testMsg, sig[:]) {
 		t.Error("VerifyDER accepted a signature under the wrong public key")
 	}
-	if VerifyDER(pub, []byte("a different message"), sig) {
+	if VerifyDER(pub, []byte("a different message"), sig[:]) {
 		t.Error("VerifyDER accepted a signature over the wrong message")
 	}
 }

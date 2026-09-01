@@ -22,7 +22,7 @@ func (k *PrivateKey) ECDH(pub *PublicKey) ([32]byte, error) {
 	if err != nil {
 		return [32]byte{}, ErrECDHFailed
 	}
-	remote, err := ecdh.P256().NewPublicKey(uncompressed)
+	remote, err := ecdh.P256().NewPublicKey(uncompressed[:])
 	if err != nil {
 		return [32]byte{}, ErrECDHFailed
 	}

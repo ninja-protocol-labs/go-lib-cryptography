@@ -1,7 +1,6 @@
 package ed25519
 
 import (
-	"bytes"
 	"errors"
 	"testing"
 )
@@ -11,15 +10,15 @@ func TestGeneratePrivateKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GeneratePrivateKey failed: %v", err)
 	}
-	if len(priv.Bytes()) != SeckeyLen {
-		t.Errorf("Bytes() length = %d, want %d", len(priv.Bytes()), SeckeyLen)
+	if priv.Bytes() == ([SeckeyLen]byte{}) {
+		t.Error("GeneratePrivateKey returned an all-zero key")
 	}
 }
 
 func TestPrivateKeyFromBytesRoundTrip(t *testing.T) {
 	priv := seckeyOne(t)
-	if !bytes.Equal(priv.Bytes(), rfc8032Test1Seed) {
-		t.Errorf("Bytes() = %x, want %x", priv.Bytes(), rfc8032Test1Seed)
+	if got := priv.Bytes(); got != [SeckeyLen]byte(rfc8032Test1Seed) {
+		t.Errorf("Bytes() = %x, want %x", got, rfc8032Test1Seed)
 	}
 }
 
@@ -57,8 +56,8 @@ func TestPrivateKeyEqual(t *testing.T) {
 func TestSeckeyOnePublicKey(t *testing.T) {
 	priv := seckeyOne(t)
 	pub := priv.PublicKey()
-	if !bytes.Equal(pub.Bytes(), rfc8032Test1Pubkey) {
-		t.Errorf("PublicKey().Bytes() = %x, want %x (RFC 8032 §7.1 test 1)", pub.Bytes(), rfc8032Test1Pubkey)
+	if got := pub.Bytes(); got != [PubkeyLen]byte(rfc8032Test1Pubkey) {
+		t.Errorf("PublicKey().Bytes() = %x, want %x (RFC 8032 §7.1 test 1)", got, rfc8032Test1Pubkey)
 	}
 }
 
@@ -67,8 +66,8 @@ func TestPublicKeyFromBytesRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PublicKeyFromBytes failed: %v", err)
 	}
-	if !bytes.Equal(pub.Bytes(), rfc8032Test1Pubkey) {
-		t.Errorf("Bytes() = %x, want %x", pub.Bytes(), rfc8032Test1Pubkey)
+	if got := pub.Bytes(); got != [PubkeyLen]byte(rfc8032Test1Pubkey) {
+		t.Errorf("Bytes() = %x, want %x", got, rfc8032Test1Pubkey)
 	}
 }
 
@@ -106,14 +105,14 @@ func TestBytesReturnsACopy(t *testing.T) {
 	priv := seckeyOne(t)
 	b := priv.Bytes()
 	b[0] ^= 0xff
-	if bytes.Equal(priv.Bytes(), b) {
-		t.Error("mutating the slice from Bytes() affected the key")
+	if priv.Bytes() == b {
+		t.Error("mutating the value from Bytes() affected the key")
 	}
 
 	pub := priv.PublicKey()
 	pb := pub.Bytes()
 	pb[0] ^= 0xff
-	if bytes.Equal(pub.Bytes(), pb) {
-		t.Error("mutating the slice from Bytes() affected the key")
+	if pub.Bytes() == pb {
+		t.Error("mutating the value from Bytes() affected the key")
 	}
 }

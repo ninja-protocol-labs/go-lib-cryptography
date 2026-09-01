@@ -1,7 +1,6 @@
 package x25519
 
 import (
-	"bytes"
 	"errors"
 	"testing"
 )
@@ -11,8 +10,8 @@ func TestGeneratePrivateKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GeneratePrivateKey failed: %v", err)
 	}
-	if len(priv.Bytes()) != SeckeyLen {
-		t.Errorf("Bytes() length = %d, want %d", len(priv.Bytes()), SeckeyLen)
+	if priv.Bytes() == ([SeckeyLen]byte{}) {
+		t.Error("GeneratePrivateKey returned an all-zero key")
 	}
 }
 
@@ -21,8 +20,8 @@ func TestPrivateKeyFromBytesRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PrivateKeyFromBytes failed: %v", err)
 	}
-	if !bytes.Equal(priv.Bytes(), alicePriv) {
-		t.Errorf("Bytes() = %x, want %x", priv.Bytes(), alicePriv)
+	if got := priv.Bytes(); got != [SeckeyLen]byte(alicePriv) {
+		t.Errorf("Bytes() = %x, want %x", got, alicePriv)
 	}
 }
 
@@ -69,8 +68,8 @@ func TestAlicePublicKeyMatchesRFC7748(t *testing.T) {
 		t.Fatalf("PrivateKeyFromBytes failed: %v", err)
 	}
 	pub := priv.PublicKey()
-	if !bytes.Equal(pub.Bytes(), alicePub) {
-		t.Errorf("PublicKey().Bytes() = %x, want %x (RFC 7748 §6.1)", pub.Bytes(), alicePub)
+	if got := pub.Bytes(); got != [PubkeyLen]byte(alicePub) {
+		t.Errorf("PublicKey().Bytes() = %x, want %x (RFC 7748 §6.1)", got, alicePub)
 	}
 }
 
@@ -79,8 +78,8 @@ func TestPublicKeyFromBytesRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PublicKeyFromBytes failed: %v", err)
 	}
-	if !bytes.Equal(pub.Bytes(), alicePub) {
-		t.Errorf("Bytes() = %x, want %x", pub.Bytes(), alicePub)
+	if got := pub.Bytes(); got != [PubkeyLen]byte(alicePub) {
+		t.Errorf("Bytes() = %x, want %x", got, alicePub)
 	}
 }
 
@@ -121,20 +120,23 @@ func TestPublicKeyEqual(t *testing.T) {
 }
 
 func TestBytesReturnsACopy(t *testing.T) {
+	// Bytes returns an array, so this is guaranteed by the language
+	// rather than by a defensive copy — the test stays as a guard against
+	// anyone changing the return type back to a slice.
 	priv, err := PrivateKeyFromBytes(alicePriv)
 	if err != nil {
 		t.Fatalf("PrivateKeyFromBytes failed: %v", err)
 	}
 	b := priv.Bytes()
 	b[0] ^= 0xff
-	if bytes.Equal(priv.Bytes(), b) {
-		t.Error("mutating the slice from Bytes() affected the key")
+	if priv.Bytes() == b {
+		t.Error("mutating the value from Bytes() affected the key")
 	}
 
 	pub := priv.PublicKey()
 	pb := pub.Bytes()
 	pb[0] ^= 0xff
-	if bytes.Equal(pub.Bytes(), pb) {
-		t.Error("mutating the slice from Bytes() affected the key")
+	if pub.Bytes() == pb {
+		t.Error("mutating the value from Bytes() affected the key")
 	}
 }
