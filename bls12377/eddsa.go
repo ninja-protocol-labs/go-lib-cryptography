@@ -1,17 +1,18 @@
-package bn254
+package bls12377
 
 import (
 	"bytes"
 	"crypto/rand"
 	"hash"
 
-	gnarkeddsa "github.com/consensys/gnark-crypto/ecc/bn254/twistededwards/eddsa"
+	gnarkeddsa "github.com/consensys/gnark-crypto/ecc/bls12-377/twistededwards/eddsa"
 )
 
-// EdDSA over the twisted Edwards curve embedded in BN254's *scalar* field
-// 𝔽r — Baby Jubjub, not BN254 itself. Like the ECDSA above, its reason to
-// exist is in-circuit verification: a gnark circuit over BN254 does Baby
-// Jubjub arithmetic natively, and Ed25519 arithmetic only at great cost.
+// EdDSA over the twisted Edwards curve embedded in BLS12-377's *scalar*
+// field 𝔽r, not over BLS12-377 itself. Like the ECDSA above, its reason
+// to exist is in-circuit verification: a gnark circuit over BLS12-377
+// does this inner curve's arithmetic natively, and Ed25519 arithmetic
+// only at great cost.
 //
 // Two things differ from RFC 8032's Ed25519, and both are visible in this
 // API:
@@ -40,14 +41,16 @@ const (
 	// serialization: public key ∥ scalar ∥ nonce source.
 	EdDSAPrivkeyLen = 3 * SeckeyLen
 
-	// EdDSAPubkeyLen is the byte length of a compressed Baby Jubjub point.
+	// EdDSAPubkeyLen is the byte length of a compressed point on the
+	// embedded twisted Edwards curve.
 	EdDSAPubkeyLen = SeckeyLen
 
 	// EdDSASignatureLen is the byte length of a signature: R ∥ S.
 	EdDSASignatureLen = 2 * SeckeyLen
 )
 
-// EdDSAPrivateKey is a Baby Jubjub signing key.
+// EdDSAPrivateKey is a signing key on BLS12-377's embedded twisted
+// Edwards curve.
 type EdDSAPrivateKey struct {
 	key gnarkeddsa.PrivateKey
 }
@@ -110,14 +113,15 @@ func (k *EdDSAPrivateKey) Equal(other *EdDSAPrivateKey) bool {
 	return k.Bytes() == other.Bytes()
 }
 
-// EdDSAPublicKey is a Baby Jubjub point used to verify EdDSA signatures.
+// EdDSAPublicKey is a point on the embedded twisted Edwards curve, used
+// to verify EdDSA signatures.
 type EdDSAPublicKey struct {
 	key gnarkeddsa.PublicKey
 }
 
-// EdDSAPublicKeyFromBytes parses a compressed Baby Jubjub point, checking
-// that it is on the curve, is not the identity, and lies in the
-// prime-order subgroup.
+// EdDSAPublicKeyFromBytes parses a compressed point on the embedded
+// twisted Edwards curve, checking that it is on the curve, is not the
+// identity, and lies in the prime-order subgroup.
 //
 // gnark-crypto's SetBytes already rejects the identity and anything
 // outside the prime-order subgroup. The on-curve check is this package's
