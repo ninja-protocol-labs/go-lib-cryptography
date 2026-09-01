@@ -75,12 +75,9 @@ func PrivateKeyFromBytes(b []byte) (*PrivateKey, error) {
 	}, nil
 }
 
-// Bytes returns the 32-byte seed. The returned slice is a copy; mutating
-// it does not affect k.
-func (k *PrivateKey) Bytes() []byte {
-	out := make([]byte, SeckeyLen)
-	copy(out, k.key[:])
-	return out
+// Bytes returns the 32-byte seed.
+func (k *PrivateKey) Bytes() [SeckeyLen]byte {
+	return k.key
 }
 
 // expand recomputes stdlib's 64-byte (seed || public key) form from k's
@@ -128,12 +125,9 @@ func PublicKeyFromBytes(b []byte) (*PublicKey, error) {
 	}, nil
 }
 
-// Bytes returns the 32-byte public key. The returned slice is a copy;
-// mutating it does not affect k.
-func (k *PublicKey) Bytes() []byte {
-	out := make([]byte, PubkeyLen)
-	copy(out, k.key[:])
-	return out
+// Bytes returns the 32-byte public key.
+func (k *PublicKey) Bytes() [PubkeyLen]byte {
+	return k.key
 }
 
 // Equal reports whether k and other are the same key.

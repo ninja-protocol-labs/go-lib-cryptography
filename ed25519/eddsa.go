@@ -34,8 +34,8 @@ import (
 // here rather than being allowed to silently produce a different scheme.
 
 // Sign signs message with priv using pure Ed25519.
-func Sign(priv *PrivateKey, message []byte) []byte {
-	return ed.Sign(priv.expand(), message)
+func Sign(priv *PrivateKey, message []byte) [SignatureLen]byte {
+	return [SignatureLen]byte(ed.Sign(priv.expand(), message))
 }
 
 // Verify reports whether sig is a valid pure-Ed25519 signature of message
@@ -47,18 +47,18 @@ func Verify(pub *PublicKey, message, sig []byte) bool {
 // SignCtx signs message with priv using Ed25519ctx, domain-separated by
 // context. context must be non-empty (see the package doc above) and at
 // most 255 bytes.
-func SignCtx(priv *PrivateKey, message, context []byte) ([]byte, error) {
+func SignCtx(priv *PrivateKey, message, context []byte) ([SignatureLen]byte, error) {
 	if len(context) == 0 {
-		return nil, ErrContextRequired
+		return [SignatureLen]byte{}, ErrContextRequired
 	}
 	sig, err := priv.expand().Sign(nil, message, &ed.Options{
 		Hash:    crypto.Hash(0),
 		Context: string(context),
 	})
 	if err != nil {
-		return nil, ErrSigningFailed
+		return [SignatureLen]byte{}, ErrSigningFailed
 	}
-	return sig, nil
+	return [SignatureLen]byte(sig), nil
 }
 
 // VerifyCtx reports whether sig is a valid Ed25519ctx signature of
@@ -79,15 +79,15 @@ func VerifyCtx(pub *PublicKey, message, context, sig []byte) bool {
 // SignPh signs a SHA-512 digest with priv using Ed25519ph, optionally
 // domain-separated by context. digest must be the SHA-512 hash of the
 // actual message, computed by the caller.
-func SignPh(priv *PrivateKey, digest [64]byte, context []byte) ([]byte, error) {
+func SignPh(priv *PrivateKey, digest [64]byte, context []byte) ([SignatureLen]byte, error) {
 	sig, err := priv.expand().Sign(nil, digest[:], &ed.Options{
 		Hash:    crypto.SHA512,
 		Context: string(context),
 	})
 	if err != nil {
-		return nil, ErrSigningFailed
+		return [SignatureLen]byte{}, ErrSigningFailed
 	}
-	return sig, nil
+	return [SignatureLen]byte(sig), nil
 }
 
 // VerifyPh reports whether sig is a valid Ed25519ph signature of digest by

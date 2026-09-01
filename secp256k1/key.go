@@ -13,6 +13,48 @@ import (
 	"github.com/ninja-protocol-labs/go-lib-cryptography/secp256k1/internal"
 )
 
+// Encoding lengths. Everything this package returns is a fixed-size array
+// of one of these lengths rather than a slice — the length is part of the
+// type, so it cannot be got wrong, and the value carries no aliasing back
+// to the key it came from. Parsing runs the other way: the *FromBytes
+// functions and the sig parameters take slices, because checking an
+// untrusted length is exactly their job.
+//
+// The one exception is DER, which is genuinely variable-length (see
+// SignDER); SignatureDERMaxLen bounds it. A slice return in this package
+// means "the length really does vary".
+const (
+	// SeckeyLen is the byte length of a PrivateKey.
+	SeckeyLen = internal.SeckeyLen
+
+	// PubkeyCompressedLen is the byte length of a compressed PublicKey.
+	PubkeyCompressedLen = internal.PubkeyCompressedLen
+
+	// PubkeyUncompressedLen is the byte length of an uncompressed
+	// PublicKey.
+	PubkeyUncompressedLen = internal.PubkeyUncompressedLen
+
+	// SignatureCompactLen is the byte length of a compact (r ∥ s) ECDSA
+	// signature, and of a recoverable one.
+	SignatureCompactLen = internal.SignatureCompactLen
+
+	// SignatureDERMaxLen bounds the DER encoding of an ECDSA signature.
+	// The encoding itself is variable-length, so SignDER and friends
+	// return a slice.
+	SignatureDERMaxLen = internal.SignatureDERMaxLen
+
+	// SignatureSchnorrLen is the byte length of a BIP-340 Schnorr
+	// signature, including the one MuSig aggregates to.
+	SignatureSchnorrLen = internal.SignatureCompactLen
+
+	// MusigPubNonceLen, MusigAggNonceLen and MusigPartialSigLen are the
+	// serialized (wire) lengths of the MuSig2 types, not their in-memory
+	// sizes.
+	MusigPubNonceLen   = internal.MusigPubnonceSerializedLen
+	MusigAggNonceLen   = internal.MusigAggnonceSerializedLen
+	MusigPartialSigLen = internal.MusigPartialSigSerializedLen
+)
+
 // PrivateKey is a secp256k1 scalar in [1, n-1].
 type PrivateKey struct {
 	key [internal.SeckeyLen]byte
@@ -52,12 +94,9 @@ func PrivateKeyFromBytes(b []byte) (*PrivateKey, error) {
 	}, nil
 }
 
-// Bytes returns the 32-byte scalar. The returned slice is a copy; mutating
-// it does not affect k.
-func (k *PrivateKey) Bytes() []byte {
-	out := make([]byte, internal.SeckeyLen)
-	copy(out, k.key[:])
-	return out
+// Bytes returns the 32-byte scalar.
+func (k *PrivateKey) Bytes() [SeckeyLen]byte {
+	return k.key
 }
 
 // PublicKey derives the public key corresponding to k. An error here would
@@ -101,26 +140,21 @@ func PublicKeyFromBytes(b []byte) (*PublicKey, error) {
 	}, nil
 }
 
-// Bytes returns the 33-byte compressed encoding. The returned slice is a
-// copy; mutating it does not affect k.
-func (k *PublicKey) Bytes() []byte {
-	out := make([]byte, internal.PubkeyCompressedLen)
-	copy(out, k.key[:])
-	return out
+// Bytes returns the 33-byte compressed encoding.
+func (k *PublicKey) Bytes() [PubkeyCompressedLen]byte {
+	return k.key
 }
 
 // BytesUncompressed returns the 65-byte uncompressed encoding. An error here
 // would mean k's compressed point, despite being validated at construction,
 // cannot be re-serialized in the other format — not something normal
 // operation can produce, but reported rather than assumed impossible.
-func (k *PublicKey) BytesUncompressed() ([]byte, error) {
+func (k *PublicKey) BytesUncompressed() ([PubkeyUncompressedLen]byte, error) {
 	uncompressed, ok := internal.PubkeyParseUncompressed(k.key[:])
 	if !ok {
-		return nil, ErrPublicKeySerializationFailed
+		return [PubkeyUncompressedLen]byte{}, ErrPublicKeySerializationFailed
 	}
-	out := make([]byte, internal.PubkeyUncompressedLen)
-	copy(out, uncompressed[:])
-	return out, nil
+	return uncompressed, nil
 }
 
 // Equal reports whether k and other are the same point.

@@ -26,38 +26,43 @@ import (
 
 // SignCompact signs msg (hashed internally) and returns the 64-byte compact
 // (r||s) encoding.
-func SignCompact(priv *PrivateKey, msg []byte) ([]byte, error) {
+func SignCompact(priv *PrivateKey, msg []byte) ([SignatureCompactLen]byte, error) {
 	digest := sha256.Sum256(msg)
 	return SignDigestCompact(priv, digest)
 }
 
 // SignCompactHedged is SignCompact with auxRand folded into the nonce.
-func SignCompactHedged(priv *PrivateKey, msg []byte, auxRand *[32]byte) ([]byte, error) {
+func SignCompactHedged(priv *PrivateKey, msg []byte, auxRand *[32]byte) ([SignatureCompactLen]byte, error) {
 	digest := sha256.Sum256(msg)
 	return SignDigestCompactHedged(priv, digest, auxRand)
 }
 
 // SignDigestCompact signs an already-hashed 32-byte digest and returns the
 // 64-byte compact (r||s) encoding.
-func SignDigestCompact(priv *PrivateKey, digest [32]byte) ([]byte, error) {
+func SignDigestCompact(priv *PrivateKey, digest [32]byte) ([SignatureCompactLen]byte, error) {
 	sig, ok := internal.ECDSASignCompact(&digest, &priv.key)
 	if !ok {
-		return nil, ErrSigningFailed
+		return [SignatureCompactLen]byte{}, ErrSigningFailed
 	}
-	return sig[:], nil
+	return sig, nil
 }
 
 // SignDigestCompactHedged is SignDigestCompact with auxRand folded into the
 // nonce.
-func SignDigestCompactHedged(priv *PrivateKey, digest [32]byte, auxRand *[32]byte) ([]byte, error) {
+func SignDigestCompactHedged(priv *PrivateKey, digest [32]byte, auxRand *[32]byte) ([SignatureCompactLen]byte, error) {
 	sig, ok := internal.ECDSASignCompactHedged(&digest, &priv.key, auxRand)
 	if !ok {
-		return nil, ErrSigningFailed
+		return [SignatureCompactLen]byte{}, ErrSigningFailed
 	}
-	return sig[:], nil
+	return sig, nil
 }
 
 // SignDER signs msg (hashed internally) and returns the DER encoding.
+//
+// This is the one signer in this package that returns a slice rather
+// than a fixed-size array: DER is variable-length (bounded by
+// SignatureDERMaxLen), so the length genuinely is not known from the
+// type.
 func SignDER(priv *PrivateKey, msg []byte) ([]byte, error) {
 	digest := sha256.Sum256(msg)
 	return SignDigestDER(priv, digest)
@@ -101,10 +106,10 @@ func VerifyCompact(pub *PublicKey, msg, sig []byte, allowHighS bool) bool {
 
 // VerifyDigestCompact is VerifyCompact for an already-hashed 32-byte digest.
 func VerifyDigestCompact(pub *PublicKey, digest [32]byte, sig []byte, allowHighS bool) bool {
-	if len(sig) != internal.SignatureCompactLen {
+	if len(sig) != SignatureCompactLen {
 		return false
 	}
-	var fixed [internal.SignatureCompactLen]byte
+	var fixed [SignatureCompactLen]byte
 	copy(fixed[:], sig)
 	return internal.ECDSAVerifyCompact(&digest, pub.key[:], &fixed, allowHighS)
 }
@@ -125,36 +130,36 @@ func VerifyDigestDER(pub *PublicKey, digest [32]byte, sig []byte, allowHighS boo
 // compact signature plus the recovery id Recover needs to reconstruct pub
 // from the signature and message alone, without pub being supplied
 // separately.
-func SignRecoverable(priv *PrivateKey, msg []byte) (sig []byte, recoveryID int, err error) {
+func SignRecoverable(priv *PrivateKey, msg []byte) (sig [SignatureCompactLen]byte, recoveryID int, err error) {
 	digest := sha256.Sum256(msg)
 	return SignDigestRecoverable(priv, digest)
 }
 
 // SignRecoverableHedged is SignRecoverable with auxRand folded into the
 // nonce.
-func SignRecoverableHedged(priv *PrivateKey, msg []byte, auxRand *[32]byte) (sig []byte, recoveryID int, err error) {
+func SignRecoverableHedged(priv *PrivateKey, msg []byte, auxRand *[32]byte) (sig [SignatureCompactLen]byte, recoveryID int, err error) {
 	digest := sha256.Sum256(msg)
 	return SignDigestRecoverableHedged(priv, digest, auxRand)
 }
 
 // SignDigestRecoverable is SignRecoverable for an already-hashed 32-byte
 // digest.
-func SignDigestRecoverable(priv *PrivateKey, digest [32]byte) ([]byte, int, error) {
+func SignDigestRecoverable(priv *PrivateKey, digest [32]byte) ([SignatureCompactLen]byte, int, error) {
 	sig, recID, ok := internal.ECDSASignRecoverable(&digest, &priv.key)
 	if !ok {
-		return nil, 0, ErrSigningFailed
+		return [SignatureCompactLen]byte{}, 0, ErrSigningFailed
 	}
-	return sig[:], recID, nil
+	return sig, recID, nil
 }
 
 // SignDigestRecoverableHedged is SignDigestRecoverable with auxRand folded
 // into the nonce.
-func SignDigestRecoverableHedged(priv *PrivateKey, digest [32]byte, auxRand *[32]byte) ([]byte, int, error) {
+func SignDigestRecoverableHedged(priv *PrivateKey, digest [32]byte, auxRand *[32]byte) ([SignatureCompactLen]byte, int, error) {
 	sig, recID, ok := internal.ECDSASignRecoverableHedged(&digest, &priv.key, auxRand)
 	if !ok {
-		return nil, 0, ErrSigningFailed
+		return [SignatureCompactLen]byte{}, 0, ErrSigningFailed
 	}
-	return sig[:], recID, nil
+	return sig, recID, nil
 }
 
 // Recover reconstructs the public key that produced sig (with the recovery
@@ -166,10 +171,10 @@ func Recover(msg []byte, sig []byte, recoveryID int) (*PublicKey, error) {
 
 // RecoverDigest is Recover for an already-hashed 32-byte digest.
 func RecoverDigest(digest [32]byte, sig []byte, recoveryID int) (*PublicKey, error) {
-	if len(sig) != internal.SignatureCompactLen {
+	if len(sig) != SignatureCompactLen {
 		return nil, ErrInvalidSignature
 	}
-	var fixed [internal.SignatureCompactLen]byte
+	var fixed [SignatureCompactLen]byte
 	copy(fixed[:], sig)
 
 	compressed, ok := internal.ECDSARecoverCompressed(&digest, &fixed, recoveryID)

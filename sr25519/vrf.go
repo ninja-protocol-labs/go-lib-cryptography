@@ -23,16 +23,16 @@ import (
 
 // VRFOutput is a 32-byte VRF output.
 type VRFOutput struct {
-	out [32]byte
+	out [VRFOutputLen]byte
 }
 
 // VRFOutputFromBytes parses a 32-byte VRF output, verifying it decodes to
 // a canonically-encoded Ristretto point.
 func VRFOutputFromBytes(b []byte) (*VRFOutput, error) {
-	if len(b) != 32 {
+	if len(b) != VRFOutputLen {
 		return nil, ErrInvalidVRFOutput
 	}
-	var enc [32]byte
+	var enc [VRFOutputLen]byte
 	copy(enc[:], b)
 	if _, err := schnorrkel.NewOutput(enc); err != nil {
 		return nil, ErrInvalidVRFOutput
@@ -43,21 +43,21 @@ func VRFOutputFromBytes(b []byte) (*VRFOutput, error) {
 }
 
 // Bytes returns the 32-byte encoding of the VRF output.
-func (o *VRFOutput) Bytes() [32]byte {
+func (o *VRFOutput) Bytes() [VRFOutputLen]byte {
 	return o.out
 }
 
 // VRFProof is a 64-byte VRF proof.
 type VRFProof struct {
-	proof [64]byte
+	proof [VRFProofLen]byte
 }
 
 // VRFProofFromBytes parses a 64-byte VRF proof.
 func VRFProofFromBytes(b []byte) (*VRFProof, error) {
-	if len(b) != 64 {
+	if len(b) != VRFProofLen {
 		return nil, ErrInvalidVRFProof
 	}
-	var enc [64]byte
+	var enc [VRFProofLen]byte
 	copy(enc[:], b)
 	var p schnorrkel.VrfProof
 	if err := p.Decode(enc); err != nil {
@@ -69,7 +69,7 @@ func VRFProofFromBytes(b []byte) (*VRFProof, error) {
 }
 
 // Bytes returns the 64-byte encoding of the VRF proof.
-func (p *VRFProof) Bytes() [64]byte {
+func (p *VRFProof) Bytes() [VRFProofLen]byte {
 	return p.proof
 }
 

@@ -1,6 +1,7 @@
 package secp256k1
 
 import (
+	"bytes"
 	"errors"
 	"testing"
 
@@ -18,11 +19,8 @@ func TestSignCompactVerifyCompactRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SignCompact failed: %v", err)
 	}
-	if len(sig) != 64 {
-		t.Fatalf("SignCompact produced %d bytes, want 64", len(sig))
-	}
 
-	if !VerifyCompact(pub, testMsg, sig, false) {
+	if !VerifyCompact(pub, testMsg, sig[:], false) {
 		t.Error("VerifyCompact rejected a signature it just produced")
 	}
 }
@@ -56,7 +54,7 @@ func TestSignCompactIsDeterministic(t *testing.T) {
 		t.Fatalf("SignCompact failed: %v", err)
 	}
 
-	if string(sig1) != string(sig2) {
+	if sig1 != sig2 {
 		t.Error("SignCompact produced different signatures for the same key/message")
 	}
 }
@@ -81,10 +79,10 @@ func TestSignCompactHedgedVaries(t *testing.T) {
 		t.Fatalf("SignCompactHedged failed: %v", err)
 	}
 
-	if string(sig1) == string(sig2) {
+	if sig1 == sig2 {
 		t.Error("SignCompactHedged produced identical signatures for different aux_rand")
 	}
-	if !VerifyCompact(pub, testMsg, sig1, false) || !VerifyCompact(pub, testMsg, sig2, false) {
+	if !VerifyCompact(pub, testMsg, sig1[:], false) || !VerifyCompact(pub, testMsg, sig2[:], false) {
 		t.Error("VerifyCompact rejected a hedged signature it should accept")
 	}
 }
@@ -110,10 +108,10 @@ func TestVerifyCompactRejectsWrongKeyAndMessage(t *testing.T) {
 		t.Fatalf("SignCompact failed: %v", err)
 	}
 
-	if VerifyCompact(otherPub, testMsg, sig, false) {
+	if VerifyCompact(otherPub, testMsg, sig[:], false) {
 		t.Error("VerifyCompact accepted a signature under the wrong public key")
 	}
-	if VerifyCompact(pub, []byte("a different message"), sig, false) {
+	if VerifyCompact(pub, []byte("a different message"), sig[:], false) {
 		t.Error("VerifyCompact accepted a signature over the wrong message")
 	}
 }
@@ -130,7 +128,7 @@ func TestSignAndRecoverRoundTrip(t *testing.T) {
 		t.Fatalf("SignRecoverable failed: %v", err)
 	}
 
-	recovered, err := Recover(testMsg, sig, recID)
+	recovered, err := Recover(testMsg, sig[:], recID)
 	if err != nil {
 		t.Fatalf("Recover failed: %v", err)
 	}
@@ -152,7 +150,7 @@ func TestRecoverRejectsWrongRecoveryID(t *testing.T) {
 	}
 
 	wrongID := (recID + 1) % 4
-	if recovered, err := Recover(testMsg, sig, wrongID); err == nil && recovered.Equal(pub) {
+	if recovered, err := Recover(testMsg, sig[:], wrongID); err == nil && recovered.Equal(pub) {
 		t.Error("Recover reconstructed the correct key from the wrong recovery id")
 	}
 }
@@ -176,7 +174,7 @@ func TestSignDigestCompactRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SignDigestCompact failed: %v", err)
 	}
-	if !VerifyDigestCompact(pub, digest, sig, false) {
+	if !VerifyDigestCompact(pub, digest, sig[:], false) {
 		t.Error("VerifyDigestCompact rejected a signature it just produced")
 	}
 }
@@ -203,10 +201,10 @@ func TestSignDigestCompactHedgedVaries(t *testing.T) {
 		t.Fatalf("SignDigestCompactHedged failed: %v", err)
 	}
 
-	if string(sig1) == string(sig2) {
+	if sig1 == sig2 {
 		t.Error("SignDigestCompactHedged produced identical signatures for different aux_rand")
 	}
-	if !VerifyDigestCompact(pub, digest, sig1, false) || !VerifyDigestCompact(pub, digest, sig2, false) {
+	if !VerifyDigestCompact(pub, digest, sig1[:], false) || !VerifyDigestCompact(pub, digest, sig2[:], false) {
 		t.Error("VerifyDigestCompact rejected a hedged signature it should accept")
 	}
 }
@@ -249,7 +247,7 @@ func TestSignDERHedgedVaries(t *testing.T) {
 		t.Fatalf("SignDERHedged failed: %v", err)
 	}
 
-	if string(sig1) == string(sig2) {
+	if bytes.Equal(sig1, sig2) {
 		t.Error("SignDERHedged produced identical signatures for different aux_rand")
 	}
 	if !VerifyDER(pub, testMsg, sig1, false) || !VerifyDER(pub, testMsg, sig2, false) {
@@ -279,7 +277,7 @@ func TestSignDigestDERHedgedVaries(t *testing.T) {
 		t.Fatalf("SignDigestDERHedged failed: %v", err)
 	}
 
-	if string(sig1) == string(sig2) {
+	if bytes.Equal(sig1, sig2) {
 		t.Error("SignDigestDERHedged produced identical signatures for different aux_rand")
 	}
 	if !VerifyDigestDER(pub, digest, sig1, false) || !VerifyDigestDER(pub, digest, sig2, false) {
@@ -301,7 +299,7 @@ func TestSignDigestRecoverableRoundTrip(t *testing.T) {
 		t.Fatalf("SignDigestRecoverable failed: %v", err)
 	}
 
-	recovered, err := RecoverDigest(digest, sig, recID)
+	recovered, err := RecoverDigest(digest, sig[:], recID)
 	if err != nil {
 		t.Fatalf("RecoverDigest failed: %v", err)
 	}
@@ -330,14 +328,14 @@ func TestSignRecoverableHedgedVaries(t *testing.T) {
 		t.Fatalf("SignRecoverableHedged failed: %v", err)
 	}
 
-	if string(sig1) == string(sig2) {
+	if sig1 == sig2 {
 		t.Error("SignRecoverableHedged produced identical signatures for different aux_rand")
 	}
-	recovered1, err := Recover(testMsg, sig1, recID1)
+	recovered1, err := Recover(testMsg, sig1[:], recID1)
 	if err != nil {
 		t.Fatalf("Recover failed: %v", err)
 	}
-	recovered2, err := Recover(testMsg, sig2, recID2)
+	recovered2, err := Recover(testMsg, sig2[:], recID2)
 	if err != nil {
 		t.Fatalf("Recover failed: %v", err)
 	}
@@ -368,14 +366,14 @@ func TestSignDigestRecoverableHedgedVaries(t *testing.T) {
 		t.Fatalf("SignDigestRecoverableHedged failed: %v", err)
 	}
 
-	if string(sig1) == string(sig2) {
+	if sig1 == sig2 {
 		t.Error("SignDigestRecoverableHedged produced identical signatures for different aux_rand")
 	}
-	recovered1, err := RecoverDigest(digest, sig1, recID1)
+	recovered1, err := RecoverDigest(digest, sig1[:], recID1)
 	if err != nil {
 		t.Fatalf("RecoverDigest failed: %v", err)
 	}
-	recovered2, err := RecoverDigest(digest, sig2, recID2)
+	recovered2, err := RecoverDigest(digest, sig2[:], recID2)
 	if err != nil {
 		t.Fatalf("RecoverDigest failed: %v", err)
 	}
@@ -395,7 +393,7 @@ func TestVerifyCompactAllowHighS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SignCompact failed: %v", err)
 	}
-	highS := flipHighS(t, sig)
+	highS := flipHighS(t, sig[:])
 
 	if VerifyCompact(pub, testMsg, highS, false) {
 		t.Error("VerifyCompact accepted a high-S signature with allowHighS=false")
@@ -416,7 +414,7 @@ func TestVerifyDERAllowHighS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SignCompact failed: %v", err)
 	}
-	highSCompact := flipHighS(t, sig)
+	highSCompact := flipHighS(t, sig[:])
 
 	var fixed [internal.SignatureCompactLen]byte
 	copy(fixed[:], highSCompact)

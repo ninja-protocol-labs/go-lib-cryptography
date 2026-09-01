@@ -38,31 +38,36 @@ import (
 
 // SignCompact signs msg (hashed internally) and returns the 64-byte compact
 // (r||s) encoding.
-func SignCompact(priv *PrivateKey, msg []byte) ([]byte, error) {
+func SignCompact(priv *PrivateKey, msg []byte) ([SignatureCompactLen]byte, error) {
 	digest := sha256.Sum256(msg)
 	return SignDigestCompact(priv, digest)
 }
 
 // SignDigestCompact signs an already-hashed 32-byte digest and returns the
 // 64-byte compact (r||s) encoding.
-func SignDigestCompact(priv *PrivateKey, digest [32]byte) ([]byte, error) {
+func SignDigestCompact(priv *PrivateKey, digest [32]byte) ([SignatureCompactLen]byte, error) {
+	var sig [SignatureCompactLen]byte
+
 	key, err := ecdsa.ParseRawPrivateKey(curve(), priv.key[:])
 	if err != nil {
-		return nil, ErrSigningFailed
+		return sig, ErrSigningFailed
 	}
 
 	r, s, err := ecdsa.Sign(rand.Reader, key, digest[:])
 	if err != nil {
-		return nil, ErrSigningFailed
+		return sig, ErrSigningFailed
 	}
 
-	sig := make([]byte, 2*SeckeyLen)
 	r.FillBytes(sig[:SeckeyLen])
 	s.FillBytes(sig[SeckeyLen:])
 	return sig, nil
 }
 
 // SignDER signs msg (hashed internally) and returns the DER encoding.
+//
+// This is the one signer in this package that returns a slice rather
+// than a fixed-size array: DER is variable-length, so the length
+// genuinely is not known from the type.
 func SignDER(priv *PrivateKey, msg []byte) ([]byte, error) {
 	digest := sha256.Sum256(msg)
 	return SignDigestDER(priv, digest)
@@ -99,7 +104,7 @@ func VerifyDigestCompact(pub *PublicKey, digest [32]byte, sig []byte) bool {
 	if err != nil {
 		return false
 	}
-	key, err := ecdsa.ParseUncompressedPublicKey(curve(), uncompressed)
+	key, err := ecdsa.ParseUncompressedPublicKey(curve(), uncompressed[:])
 	if err != nil {
 		return false
 	}
@@ -122,7 +127,7 @@ func VerifyDigestDER(pub *PublicKey, digest [32]byte, sig []byte) bool {
 	if err != nil {
 		return false
 	}
-	key, err := ecdsa.ParseUncompressedPublicKey(curve(), uncompressed)
+	key, err := ecdsa.ParseUncompressedPublicKey(curve(), uncompressed[:])
 	if err != nil {
 		return false
 	}

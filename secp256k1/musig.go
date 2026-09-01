@@ -168,14 +168,19 @@ func MusigGenerateNonceCounter(priv *PrivateKey, counter uint64, msg *[32]byte, 
 
 // Bytes encodes n into the 66-byte wire form to send to whoever is
 // aggregating nonces.
-func (n *MusigPubNonce) Bytes() [internal.MusigPubnonceSerializedLen]byte {
+func (n *MusigPubNonce) Bytes() [MusigPubNonceLen]byte {
 	return internal.MusigPubnonceSerialize(&n.pubnonce)
 }
 
 // ParseMusigPubNonce decodes a 66-byte pubnonce received from another
 // signer.
-func ParseMusigPubNonce(b [internal.MusigPubnonceSerializedLen]byte) (*MusigPubNonce, error) {
-	pubnonce, ok := internal.MusigPubnonceParse(&b)
+func ParseMusigPubNonce(b []byte) (*MusigPubNonce, error) {
+	if len(b) != MusigPubNonceLen {
+		return nil, ErrInvalidMusigPubNonce
+	}
+	var wire [MusigPubNonceLen]byte
+	copy(wire[:], b)
+	pubnonce, ok := internal.MusigPubnonceParse(&wire)
 	if !ok {
 		return nil, ErrInvalidMusigPubNonce
 	}
@@ -206,14 +211,19 @@ func MusigAggregateNonces(pubnonces []*MusigPubNonce) (*MusigAggNonce, error) {
 }
 
 // Bytes encodes agg into the 66-byte wire form to send to the signers.
-func (agg *MusigAggNonce) Bytes() [internal.MusigAggnonceSerializedLen]byte {
+func (agg *MusigAggNonce) Bytes() [MusigAggNonceLen]byte {
 	return internal.MusigAggnonceSerialize(&agg.aggnonce)
 }
 
 // ParseMusigAggNonce decodes a 66-byte aggregate nonce received from
 // whoever ran MusigAggregateNonces.
-func ParseMusigAggNonce(b [internal.MusigAggnonceSerializedLen]byte) (*MusigAggNonce, error) {
-	aggnonce, ok := internal.MusigAggnonceParse(&b)
+func ParseMusigAggNonce(b []byte) (*MusigAggNonce, error) {
+	if len(b) != MusigAggNonceLen {
+		return nil, ErrInvalidMusigAggNonce
+	}
+	var wire [MusigAggNonceLen]byte
+	copy(wire[:], b)
+	aggnonce, ok := internal.MusigAggnonceParse(&wire)
 	if !ok {
 		return nil, ErrInvalidMusigAggNonce
 	}
@@ -283,14 +293,19 @@ func MusigVerifyPartialSig(sig *MusigPartialSig, pubnonce *MusigPubNonce, pub *P
 
 // Bytes encodes s into the 32-byte wire form to send to whoever is
 // aggregating partial signatures.
-func (s *MusigPartialSig) Bytes() [internal.MusigPartialSigSerializedLen]byte {
+func (s *MusigPartialSig) Bytes() [MusigPartialSigLen]byte {
 	return internal.MusigPartialSigSerialize(&s.sig)
 }
 
 // ParseMusigPartialSig decodes a 32-byte partial signature received from
 // another signer.
-func ParseMusigPartialSig(b [internal.MusigPartialSigSerializedLen]byte) (*MusigPartialSig, error) {
-	sig, ok := internal.MusigPartialSigParse(&b)
+func ParseMusigPartialSig(b []byte) (*MusigPartialSig, error) {
+	if len(b) != MusigPartialSigLen {
+		return nil, ErrInvalidMusigPartialSig
+	}
+	var wire [MusigPartialSigLen]byte
+	copy(wire[:], b)
+	sig, ok := internal.MusigPartialSigParse(&wire)
 	if !ok {
 		return nil, ErrInvalidMusigPartialSig
 	}
@@ -305,7 +320,7 @@ func ParseMusigPartialSig(b [internal.MusigPartialSigSerializedLen]byte) (*Musig
 // combines into a signature that fails verification, which is exactly why
 // MusigVerifyPartialSig exists as a way to isolate the culprit ahead of
 // time.
-func MusigAggregateSignatures(session *MusigSession, sigs []*MusigPartialSig) ([]byte, error) {
+func MusigAggregateSignatures(session *MusigSession, sigs []*MusigPartialSig) ([SignatureSchnorrLen]byte, error) {
 	packed := make([][internal.MusigPartialSigLen]byte, len(sigs))
 	for i, s := range sigs {
 		packed[i] = s.sig
@@ -313,7 +328,7 @@ func MusigAggregateSignatures(session *MusigSession, sigs []*MusigPartialSig) ([
 
 	sig, ok := internal.MusigPartialSigAgg(&session.session, packed)
 	if !ok {
-		return nil, ErrMusigSigAggFailed
+		return [SignatureSchnorrLen]byte{}, ErrMusigSigAggFailed
 	}
-	return sig[:], nil
+	return sig, nil
 }

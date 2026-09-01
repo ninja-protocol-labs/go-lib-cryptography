@@ -77,6 +77,12 @@ const (
 	// ChainCodeLen is the byte length of a chain code used in
 	// hierarchical key derivation.
 	ChainCodeLen = schnorrkel.ChainCodeLength
+
+	// VRFOutputLen is the byte length of a VRFOutput.
+	VRFOutputLen = 32
+
+	// VRFProofLen is the byte length of a VRFProof.
+	VRFProofLen = 64
 )
 
 // PrivateKey is an sr25519 scalar — the actual value used to sign, not a
@@ -131,12 +137,9 @@ func PrivateKeyFromBytes(b []byte) (*PrivateKey, error) {
 	}, nil
 }
 
-// Bytes returns the 32-byte scalar. The returned slice is a copy;
-// mutating it does not affect k.
-func (k *PrivateKey) Bytes() []byte {
-	out := make([]byte, SeckeyLen)
-	copy(out, k.key[:])
-	return out
+// Bytes returns the 32-byte scalar.
+func (k *PrivateKey) Bytes() [SeckeyLen]byte {
+	return k.key
 }
 
 // secretKey wraps k's scalar as schnorrkel's SecretKey, with a zeroed,
@@ -199,12 +202,9 @@ func (k *PublicKey) schnorrkelKey() *schnorrkel.PublicKey {
 	return pub
 }
 
-// Bytes returns the 32-byte public key. The returned slice is a copy;
-// mutating it does not affect k.
-func (k *PublicKey) Bytes() []byte {
-	out := make([]byte, PubkeyLen)
-	copy(out, k.key[:])
-	return out
+// Bytes returns the 32-byte public key.
+func (k *PublicKey) Bytes() [PubkeyLen]byte {
+	return k.key
 }
 
 // Equal reports whether k and other are the same key.

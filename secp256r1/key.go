@@ -51,8 +51,8 @@ func splitUncompressed(b []byte) (x, y *big.Int) {
 // validation of its own — callers must already know (x, y) is a valid
 // point (e.g. via elliptic.UnmarshalCompressed, which does validate) —
 // and exists only to avoid the deprecated elliptic.Marshal.
-func joinUncompressed(x, y *big.Int) []byte {
-	out := make([]byte, PubkeyUncompressedLen)
+func joinUncompressed(x, y *big.Int) [PubkeyUncompressedLen]byte {
+	var out [PubkeyUncompressedLen]byte
 	out[0] = 4
 	x.FillBytes(out[1:33])
 	y.FillBytes(out[33:65])
@@ -70,6 +70,12 @@ const (
 	// PubkeyUncompressedLen is the byte length of PublicKey's uncompressed
 	// encoding.
 	PubkeyUncompressedLen = 65
+
+	// SignatureCompactLen is the byte length of a compact (r ∥ s)
+	// signature. DER has no constant of its own: that encoding is
+	// variable-length, which is why SignDER returns a slice where
+	// SignCompact returns an array.
+	SignatureCompactLen = 2 * SeckeyLen
 )
 
 func curve() elliptic.Curve { return elliptic.P256() }
@@ -113,12 +119,9 @@ func PrivateKeyFromBytes(b []byte) (*PrivateKey, error) {
 	}, nil
 }
 
-// Bytes returns the 32-byte scalar. The returned slice is a copy; mutating
-// it does not affect k.
-func (k *PrivateKey) Bytes() []byte {
-	out := make([]byte, SeckeyLen)
-	copy(out, k.key[:])
-	return out
+// Bytes returns the 32-byte scalar.
+func (k *PrivateKey) Bytes() [SeckeyLen]byte {
+	return k.key
 }
 
 // PublicKey derives the public key corresponding to k. An error here would
@@ -199,22 +202,19 @@ func (k *PublicKey) point() (x, y *big.Int, err error) {
 	return x, y, nil
 }
 
-// Bytes returns the 33-byte compressed encoding. The returned slice is a
-// copy; mutating it does not affect k.
-func (k *PublicKey) Bytes() []byte {
-	out := make([]byte, PubkeyCompressedLen)
-	copy(out, k.key[:])
-	return out
+// Bytes returns the 33-byte compressed encoding.
+func (k *PublicKey) Bytes() [PubkeyCompressedLen]byte {
+	return k.key
 }
 
 // BytesUncompressed returns the 65-byte uncompressed encoding. An error here
 // would mean k's compressed point, despite being validated at construction,
 // cannot be decoded — not something normal operation can produce, but
 // reported rather than assumed impossible.
-func (k *PublicKey) BytesUncompressed() ([]byte, error) {
+func (k *PublicKey) BytesUncompressed() ([PubkeyUncompressedLen]byte, error) {
 	x, y, err := k.point()
 	if err != nil {
-		return nil, err
+		return [PubkeyUncompressedLen]byte{}, err
 	}
 	return joinUncompressed(x, y), nil
 }
