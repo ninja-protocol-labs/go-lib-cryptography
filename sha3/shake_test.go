@@ -2,6 +2,7 @@ package sha3
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"testing"
 )
@@ -126,20 +127,27 @@ func TestCSHAKEIsDomainSeparated(t *testing.T) {
 	}
 }
 
-func TestSHAKEWriteAfterReadPanics(t *testing.T) {
-	// Documented in Write: the sponge has switched to squeezing, and
-	// quietly absorbing again would produce a stream no other
-	// implementation agrees with.
+func TestSHAKEWriteAfterReadIsAnError(t *testing.T) {
+	// The sponge has switched to squeezing, and absorbing again would
+	// produce a stream no other implementation agrees with. The underlying
+	// implementation panics; this package reports it.
 	x := NewSHAKE128()
 	x.Write(testMsg)
 	if _, err := io.ReadFull(x, make([]byte, 8)); err != nil {
 		t.Fatalf("Read failed: %v", err)
 	}
 
-	defer func() {
-		if recover() == nil {
-			t.Error("Write after Read did not panic")
-		}
-	}()
-	x.Write([]byte("more"))
+	n, err := x.Write([]byte("more"))
+	if !errors.Is(err, ErrWriteAfterRead) {
+		t.Errorf("Write after Read error = %v, want ErrWriteAfterRead", err)
+	}
+	if n != 0 {
+		t.Errorf("Write after Read absorbed %d bytes, want 0", n)
+	}
+
+	// Reset must lift it.
+	x.Reset()
+	if _, err := x.Write(testMsg); err != nil {
+		t.Errorf("Write after Reset failed: %v", err)
+	}
 }
