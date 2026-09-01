@@ -38,7 +38,8 @@ func SumSHAKE256(data []byte, length int) []byte {
 // that reads 100 bytes gets the same first 32 as one that stopped at 32.
 // Write after the first Read is not allowed; see Write.
 type SHAKE struct {
-	s *sha3.SHAKE
+	s    *sha3.SHAKE
+	read bool
 }
 
 // NewSHAKE128 returns a SHAKE128 XOF.
@@ -67,17 +68,24 @@ func NewCSHAKE256(n, s []byte) *SHAKE {
 	return &SHAKE{s: sha3.NewCSHAKE256(n, s)}
 }
 
-// Write absorbs more input. It never returns an error before the first
-// Read; after one, the sponge has switched to squeezing and writing again
-// panics, because quietly absorbing into a squeezing sponge would produce
-// a stream no other implementation agrees with.
+// Write absorbs more input. Once the sponge has switched to squeezing —
+// at the first Read — it returns ErrWriteAfterRead without absorbing
+// anything, since absorbing into a squeezing sponge would produce a
+// stream no other implementation agrees with.
+//
+// The underlying implementation panics in that situation; this reports it
+// instead, as everything else in this module does.
 func (x *SHAKE) Write(p []byte) (int, error) {
+	if x.read {
+		return 0, ErrWriteAfterRead
+	}
 	return x.s.Write(p)
 }
 
 // Read squeezes len(p) bytes of output. It never returns an error and
 // never a short read: an XOF's stream has no end.
 func (x *SHAKE) Read(p []byte) (int, error) {
+	x.read = true
 	return x.s.Read(p)
 }
 
@@ -85,6 +93,7 @@ func (x *SHAKE) Read(p []byte) (int, error) {
 // customization string a cSHAKE was constructed with.
 func (x *SHAKE) Reset() {
 	x.s.Reset()
+	x.read = false
 }
 
 // BlockSize returns the sponge's rate in bytes.
