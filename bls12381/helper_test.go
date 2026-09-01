@@ -11,9 +11,8 @@ var testMsg = []byte("the quick brown fox jumps over the lazy dog")
 // throughout secp256k1's own tests.
 func privKeyN(t *testing.T, n byte) *PrivateKey {
 	t.Helper()
-	b := make([]byte, 32)
-	b[31] = n
-	priv, err := PrivateKeyFromBytes(b)
+	b := scalarN(n)
+	priv, err := PrivateKeyFromBytes(b[:])
 	if err != nil {
 		t.Fatalf("PrivateKeyFromBytes failed for a valid key: %v", err)
 	}
@@ -25,4 +24,12 @@ func privKeyN(t *testing.T, n byte) *PrivateKey {
 func privKeyOne(t *testing.T) *PrivateKey {
 	t.Helper()
 	return privKeyN(t, 1)
+}
+
+// scalarN is the big-endian encoding of the small scalar n, the form
+// G1Point.Mul and MultiScalarMultG1 take.
+func scalarN(n byte) [SeckeyLen]byte {
+	var b [SeckeyLen]byte
+	b[SeckeyLen-1] = n
+	return b
 }

@@ -7,14 +7,11 @@ func TestMultiScalarMultG1AgreesWithIndividualMuls(t *testing.T) {
 	priv := privKeyN(t, 50)
 	pkA := G1Point(priv.PublicKeyMinPk().point)
 
-	s1 := make([]byte, 32)
-	s1[31] = 7
-	s2 := make([]byte, 32)
-	s2[31] = 11
+	s1, s2 := scalarN(7), scalarN(11)
 
-	want := g.Mul(s1, 256).Add(pkA.Mul(s2, 256))
+	want := g.Mul(s1).Add(pkA.Mul(s2))
 
-	got, err := MultiScalarMultG1([]G1Point{g, pkA}, [][]byte{s1, s2}, 256)
+	got, err := MultiScalarMultG1([]G1Point{g, pkA}, [][SeckeyLen]byte{s1, s2})
 	if err != nil {
 		t.Fatalf("MultiScalarMultG1 failed: %v", err)
 	}
@@ -28,14 +25,11 @@ func TestMultiScalarMultG2AgreesWithIndividualMuls(t *testing.T) {
 	priv := privKeyN(t, 51)
 	pkA := G2Point(priv.PublicKeyMinSig().point)
 
-	s1 := make([]byte, 32)
-	s1[31] = 13
-	s2 := make([]byte, 32)
-	s2[31] = 17
+	s1, s2 := scalarN(13), scalarN(17)
 
-	want := g.Mul(s1, 256).Add(pkA.Mul(s2, 256))
+	want := g.Mul(s1).Add(pkA.Mul(s2))
 
-	got, err := MultiScalarMultG2([]G2Point{g, pkA}, [][]byte{s1, s2}, 256)
+	got, err := MultiScalarMultG2([]G2Point{g, pkA}, [][SeckeyLen]byte{s1, s2})
 	if err != nil {
 		t.Fatalf("MultiScalarMultG2 failed: %v", err)
 	}
@@ -45,23 +39,28 @@ func TestMultiScalarMultG2AgreesWithIndividualMuls(t *testing.T) {
 }
 
 func TestMultiScalarMultG1RejectsEmpty(t *testing.T) {
-	if _, err := MultiScalarMultG1(nil, nil, 256); err == nil {
+	if _, err := MultiScalarMultG1(nil, nil); err == nil {
 		t.Error("MultiScalarMultG1 accepted an empty input")
 	}
 }
 
 func TestMultiScalarMultG1RejectsLengthMismatch(t *testing.T) {
 	g := G1Generator()
-	s := make([]byte, 32)
-	if _, err := MultiScalarMultG1([]G1Point{g, g}, [][]byte{s}, 256); err == nil {
+	if _, err := MultiScalarMultG1([]G1Point{g, g}, [][SeckeyLen]byte{scalarN(1)}); err == nil {
 		t.Error("MultiScalarMultG1 accepted mismatched points/scalars lengths")
 	}
 }
 
-func TestMultiScalarMultG1RejectsWrongScalarWidth(t *testing.T) {
+func TestMultiScalarMultAgreesWithSingleMul(t *testing.T) {
+	// A one-point MSM must reduce to plain scalar multiplication. A scalar
+	// of the wrong width is no longer possible to pass — it is a type
+	// error now, not a runtime check.
 	g := G1Generator()
-	shortScalar := make([]byte, 16) // stride for nbits=256 is 32 bytes
-	if _, err := MultiScalarMultG1([]G1Point{g}, [][]byte{shortScalar}, 256); err == nil {
-		t.Error("MultiScalarMultG1 accepted a scalar of the wrong width for nbits")
+	got, err := MultiScalarMultG1([]G1Point{g}, [][SeckeyLen]byte{scalarN(9)})
+	if err != nil {
+		t.Fatalf("MultiScalarMultG1 failed: %v", err)
+	}
+	if got != g.Mul(scalarN(9)) {
+		t.Error("a one-point MSM disagrees with G1Point.Mul")
 	}
 }

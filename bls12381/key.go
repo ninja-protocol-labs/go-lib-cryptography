@@ -40,6 +40,47 @@ const (
 	DefaultDSTMinSig = "BLS_SIG_BLS12381G1_XMD:SHA-256_SSWU_RO_NUL_"
 )
 
+// Encoding lengths. Everything this package returns is a fixed-size array
+// of one of these lengths rather than a slice: the length is part of the
+// type, so it cannot be got wrong, and the value carries no aliasing back
+// to the key it came from. Parsing runs the other way — the *FromBytes
+// functions and the sig parameters take slices, because checking an
+// untrusted length is exactly their job, and an array parameter would push
+// that check to the caller as a panicking conversion.
+//
+// They are also what makes those array types nameable: the internal
+// package's own constants are not reachable from outside this module, so a
+// caller could never write down the type of what Bytes returns without
+// these.
+const (
+	// G1CompressedLen is the byte length of a compressed G1 point.
+	G1CompressedLen = internal.P1CompressedLen
+
+	// G2CompressedLen is the byte length of a compressed G2 point.
+	G2CompressedLen = internal.P2CompressedLen
+
+	// SeckeyLen is the byte length of a PrivateKey: a big-endian scalar
+	// modulo r, BLS12-381's group order. It is also the width of every
+	// scalar this package's scalar multiplication and MSM take.
+	SeckeyLen = internal.ScalarLen
+
+	// PubkeyMinPkLen is the byte length of a compressed min-pk public key
+	// (a G1 point).
+	PubkeyMinPkLen = G1CompressedLen
+
+	// PubkeyMinSigLen is the byte length of a compressed min-sig public
+	// key (a G2 point).
+	PubkeyMinSigLen = G2CompressedLen
+
+	// SignatureMinPkLen is the byte length of a compressed min-pk
+	// signature (a G2 point).
+	SignatureMinPkLen = G2CompressedLen
+
+	// SignatureMinSigLen is the byte length of a compressed min-sig
+	// signature (a G1 point).
+	SignatureMinSigLen = G1CompressedLen
+)
+
 // PrivateKey is a BLS12-381 scalar. The same scalar underlies both the
 // min-pk and min-sig public keys derived from it — it is not itself
 // scheme-specific.
@@ -74,12 +115,9 @@ func PrivateKeyFromBytes(b []byte) (*PrivateKey, error) {
 	return &PrivateKey{key: key}, nil
 }
 
-// Bytes returns the 32-byte big-endian scalar. The returned slice is a
-// copy; mutating it does not affect k.
-func (k *PrivateKey) Bytes() []byte {
-	out := make([]byte, internal.ScalarLen)
-	copy(out, k.key[:])
-	return out
+// Bytes returns the 32-byte big-endian scalar.
+func (k *PrivateKey) Bytes() [SeckeyLen]byte {
+	return k.key
 }
 
 // Equal reports whether k and other are the same key.
@@ -131,11 +169,8 @@ func PublicKeyMinPkFromBytes(b []byte) (*PublicKeyMinPk, error) {
 }
 
 // Bytes returns the 48-byte compressed encoding.
-func (k *PublicKeyMinPk) Bytes() []byte {
-	compressed := internal.P1AffineCompress(&k.point)
-	out := make([]byte, internal.P1CompressedLen)
-	copy(out, compressed[:])
-	return out
+func (k *PublicKeyMinPk) Bytes() [PubkeyMinPkLen]byte {
+	return internal.P1AffineCompress(&k.point)
 }
 
 // Equal reports whether k and other are the same key.
@@ -171,11 +206,8 @@ func PublicKeyMinSigFromBytes(b []byte) (*PublicKeyMinSig, error) {
 }
 
 // Bytes returns the 96-byte compressed encoding.
-func (k *PublicKeyMinSig) Bytes() []byte {
-	compressed := internal.P2AffineCompress(&k.point)
-	out := make([]byte, internal.P2CompressedLen)
-	copy(out, compressed[:])
-	return out
+func (k *PublicKeyMinSig) Bytes() [PubkeyMinSigLen]byte {
+	return internal.P2AffineCompress(&k.point)
 }
 
 // Equal reports whether k and other are the same key.

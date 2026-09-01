@@ -44,52 +44,48 @@ func AggregatePublicKeysMinSig(pks []*PublicKeyMinSig) (*PublicKeyMinSig, error)
 }
 
 // AggregateSignaturesMinPk sums a set of min-pk signatures (each
-// P2CompressedLen bytes, e.g. from SignMinPk) into one compressed
+// SignatureMinPkLen bytes, e.g. from SignMinPk) into one compressed
 // signature. Unlike AggregatePublicKeysMinPk, each signature here is
 // untrusted wire data — encoding, on-curve, and subgroup membership are all
 // checked as it's parsed.
-func AggregateSignaturesMinPk(sigs [][]byte) ([]byte, error) {
+func AggregateSignaturesMinPk(sigs [][]byte) ([SignatureMinPkLen]byte, error) {
+	var out [SignatureMinPkLen]byte
 	if len(sigs) == 0 {
-		return nil, ErrAggregateFailed
+		return out, ErrAggregateFailed
 	}
 	buf := make([]byte, 0, len(sigs)*internal.P2CompressedLen)
 	for _, sig := range sigs {
 		if len(sig) != internal.P2CompressedLen {
-			return nil, ErrInvalidSignature
+			return out, ErrInvalidSignature
 		}
 		buf = append(buf, sig...)
 	}
 	point, code := internal.P2sAggregateCompressed(buf)
 	if code != internal.ErrSuccess {
-		return nil, ErrAggregateFailed
+		return out, ErrAggregateFailed
 	}
-	compressed := internal.P2AffineCompress(&point)
-	out := make([]byte, internal.P2CompressedLen)
-	copy(out, compressed[:])
-	return out, nil
+	return internal.P2AffineCompress(&point), nil
 }
 
 // AggregateSignaturesMinSig is AggregateSignaturesMinPk's mirror for
-// min-sig signatures (each P1CompressedLen bytes).
-func AggregateSignaturesMinSig(sigs [][]byte) ([]byte, error) {
+// min-sig signatures (each SignatureMinSigLen bytes).
+func AggregateSignaturesMinSig(sigs [][]byte) ([SignatureMinSigLen]byte, error) {
+	var out [SignatureMinSigLen]byte
 	if len(sigs) == 0 {
-		return nil, ErrAggregateFailed
+		return out, ErrAggregateFailed
 	}
 	buf := make([]byte, 0, len(sigs)*internal.P1CompressedLen)
 	for _, sig := range sigs {
 		if len(sig) != internal.P1CompressedLen {
-			return nil, ErrInvalidSignature
+			return out, ErrInvalidSignature
 		}
 		buf = append(buf, sig...)
 	}
 	point, code := internal.P1sAggregateCompressed(buf)
 	if code != internal.ErrSuccess {
-		return nil, ErrAggregateFailed
+		return out, ErrAggregateFailed
 	}
-	compressed := internal.P1AffineCompress(&point)
-	out := make([]byte, internal.P1CompressedLen)
-	copy(out, compressed[:])
-	return out, nil
+	return internal.P1AffineCompress(&point), nil
 }
 
 // AggregateVerifyMinPk verifies an aggregated min-pk signature against
