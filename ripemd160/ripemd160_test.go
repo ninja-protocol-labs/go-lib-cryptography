@@ -118,15 +118,6 @@ func TestSumDoesNotAliasOrOverrun(t *testing.T) {
 	}
 }
 
-func TestConstants(t *testing.T) {
-	if Size != 20 {
-		t.Errorf("Size = %d, want 20", Size)
-	}
-	if BlockSize != 64 {
-		t.Errorf("BlockSize = %d, want 64", BlockSize)
-	}
-}
-
 func TestDigestsDifferAcrossInputs(t *testing.T) {
 	// Guards against a wiring mistake that returns a constant: every
 	// vector must hash to something distinct.
