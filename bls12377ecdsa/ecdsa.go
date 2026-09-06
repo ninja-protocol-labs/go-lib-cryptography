@@ -26,7 +26,7 @@ func Sign(k *PrivateKey, msg []byte, h hash.Hash) (*Signature, error) {
 		return nil, ErrInvalidPrivateKey
 	}
 
-	sig, err := k.key.Sign(msg, h)
+	sig, err := k.signer().Sign(msg, h)
 	if err != nil {
 		return nil, ErrSigningFailed
 	}
@@ -43,6 +43,6 @@ func Verify(k *PublicKey, msg []byte, sig *Signature, h hash.Hash) bool {
 		return false
 	}
 
-	ok, err := k.key.Verify(sig.sig[:], msg, h)
+	ok, err := k.verifier().Verify(sig.sig[:], msg, h)
 	return err == nil && ok
 }

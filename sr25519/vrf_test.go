@@ -2,149 +2,170 @@ package sr25519
 
 import (
 	"bytes"
-	"errors"
+	"encoding/hex"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestSignVRFVerifyVRFRoundTrip(t *testing.T) {
-	priv := aliceKey(t)
-	pub, err := priv.PublicKey()
-	if err != nil {
-		t.Fatalf("PublicKey failed: %v", err)
-	}
+func vrfOK(t *testing.T, k *PrivateKey) (*VRFOutput, *VRFProof) {
+	t.Helper()
 
-	out, proof, err := SignVRF(priv, testCtx, testMsg)
-	if err != nil {
-		t.Fatalf("SignVRF failed: %v", err)
-	}
-	if !VerifyVRF(pub, testCtx, testMsg, out, proof) {
-		t.Error("VerifyVRF rejected an output/proof SignVRF just produced")
+	out, proof, err := SignVRF(k, testCtx, testMsg)
+	require.NoError(t, err)
+	return out, proof
+}
+
+func TestVRFRoundTrip(t *testing.T) {
+	for range 10 {
+		k := randKey(t)
+
+		out, proof, err := SignVRF(k, testCtx, testMsg)
+		require.NoError(t, err)
+		assert.True(t, VerifyVRF(k.PublicKey(), testCtx, testMsg, out, proof))
 	}
 }
 
-func TestSignVRFIsDeterministicOutput(t *testing.T) {
-	// The VRF output itself must be deterministic (that's the point of a
-	// VRF) even though the accompanying proof is randomized like an
-	// ordinary schnorrkel signature.
-	priv := aliceKey(t)
-	out1, _, err := SignVRF(priv, testCtx, testMsg)
-	if err != nil {
-		t.Fatalf("SignVRF failed: %v", err)
-	}
-	out2, _, err := SignVRF(priv, testCtx, testMsg)
-	if err != nil {
-		t.Fatalf("SignVRF failed: %v", err)
-	}
-	if out1.Bytes() != out2.Bytes() {
-		t.Error("SignVRF produced two different outputs for the same key, context, and message")
-	}
+// The output is the function's value: deterministic in key, context and
+// message, even though the proof accompanying it is not.
+func TestVRFOutputIsDeterministic(t *testing.T) {
+	k := aliceKey(t)
+
+	a, _ := vrfOK(t, k)
+	b, _ := vrfOK(t, k)
+
+	assert.True(t, a.Equal(b))
 }
 
-func TestVerifyVRFRejectsWrongMessageKeyAndContext(t *testing.T) {
-	priv := aliceKey(t)
-	pub, err := priv.PublicKey()
-	if err != nil {
-		t.Fatalf("PublicKey failed: %v", err)
-	}
-	otherPriv := seckeyN(t, 2)
-	otherPub, err := otherPriv.PublicKey()
-	if err != nil {
-		t.Fatalf("PublicKey failed: %v", err)
-	}
+func TestVRFOutputVariesByInput(t *testing.T) {
+	k := aliceKey(t)
 
-	out, proof, err := SignVRF(priv, testCtx, testMsg)
-	if err != nil {
-		t.Fatalf("SignVRF failed: %v", err)
-	}
+	base, _ := vrfOK(t, k)
 
-	if VerifyVRF(pub, testCtx, append(append([]byte{}, testMsg...), 0x00), out, proof) {
-		t.Error("VerifyVRF accepted an output/proof under a modified message")
-	}
-	if VerifyVRF(otherPub, testCtx, testMsg, out, proof) {
-		t.Error("VerifyVRF accepted an output/proof under the wrong public key")
-	}
-	if VerifyVRF(pub, []byte("different context"), testMsg, out, proof) {
-		t.Error("VerifyVRF accepted an output/proof under the wrong context")
-	}
+	other, _, err := SignVRF(k, testCtx, []byte("another"))
+	require.NoError(t, err)
+	assert.False(t, base.Equal(other), "a different message gave the same output")
+
+	otherCtx, _, err := SignVRF(k, []byte("other ctx"), testMsg)
+	require.NoError(t, err)
+	assert.False(t, base.Equal(otherCtx), "a different context gave the same output")
+
+	otherKey, _ := vrfOK(t, randKey(t))
+	assert.False(t, base.Equal(otherKey), "a different key gave the same output")
 }
 
-func TestVRFOutputFromBytesRoundTrip(t *testing.T) {
-	priv := aliceKey(t)
-	out, _, err := SignVRF(priv, testCtx, testMsg)
-	if err != nil {
-		t.Fatalf("SignVRF failed: %v", err)
-	}
+func TestVerifyVRFRejects(t *testing.T) {
+	k := aliceKey(t)
+	out, proof := vrfOK(t, k)
 
-	wire := out.Bytes()
-	parsed, err := VRFOutputFromBytes(wire[:])
-	if err != nil {
-		t.Fatalf("VRFOutputFromBytes failed: %v", err)
-	}
-	if parsed.Bytes() != wire {
-		t.Error("VRFOutputFromBytes(out.Bytes()) does not round trip")
-	}
+	t.Run("wrong key", func(t *testing.T) {
+		assert.False(t, VerifyVRF(randKey(t).PublicKey(), testCtx, testMsg, out, proof))
+	})
+
+	t.Run("wrong message", func(t *testing.T) {
+		assert.False(t, VerifyVRF(k.PublicKey(), testCtx, []byte("another"), out, proof))
+	})
+
+	t.Run("wrong context", func(t *testing.T) {
+		assert.False(t, VerifyVRF(k.PublicKey(), []byte("other"), testMsg, out, proof))
+	})
+
+	t.Run("mismatched proof", func(t *testing.T) {
+		_, otherProof := vrfOK(t, randKey(t))
+		assert.False(t, VerifyVRF(k.PublicKey(), testCtx, testMsg, out, otherProof))
+	})
+
+	t.Run("nils", func(t *testing.T) {
+		assert.False(t, VerifyVRF(nil, testCtx, testMsg, out, proof))
+		assert.False(t, VerifyVRF(k.PublicKey(), testCtx, testMsg, nil, proof))
+		assert.False(t, VerifyVRF(k.PublicKey(), testCtx, testMsg, out, nil))
+	})
 }
 
-func TestVRFOutputFromBytesRejectsInvalid(t *testing.T) {
-	cases := map[string][]byte{
-		"empty": nil,
-		"short": make([]byte, 31),
-		"long":  make([]byte, 33),
-	}
-	for name, b := range cases {
-		t.Run(name, func(t *testing.T) {
-			if _, err := VRFOutputFromBytes(b); !errors.Is(err, ErrInvalidVRFOutput) {
-				t.Errorf("VRFOutputFromBytes(%s) error = %v, want %v", name, err, ErrInvalidVRFOutput)
-			}
-		})
-	}
+func TestVRFRoundTripThroughBytes(t *testing.T) {
+	k := aliceKey(t)
+	out, proof := vrfOK(t, k)
+
+	ob, pb := out.Bytes(), proof.Bytes()
+
+	sameOut, err := VRFOutputFromBytes(ob[:])
+	require.NoError(t, err)
+	sameProof, err := VRFProofFromBytes(pb[:])
+	require.NoError(t, err)
+
+	assert.True(t, out.Equal(sameOut))
+	assert.True(t, proof.Equal(sameProof))
+	assert.True(t, VerifyVRF(k.PublicKey(), testCtx, testMsg, sameOut, sameProof))
 }
 
-func TestVRFProofFromBytesRoundTrip(t *testing.T) {
-	priv := aliceKey(t)
-	_, proof, err := SignVRF(priv, testCtx, testMsg)
-	if err != nil {
-		t.Fatalf("SignVRF failed: %v", err)
-	}
+func TestVRFFromBytesRejectsInvalid(t *testing.T) {
+	out, proof := vrfOK(t, aliceKey(t))
+	ob, pb := out.Bytes(), proof.Bytes()
 
-	wire := proof.Bytes()
-	parsed, err := VRFProofFromBytes(wire[:])
-	if err != nil {
-		t.Fatalf("VRFProofFromBytes failed: %v", err)
-	}
-	if parsed.Bytes() != wire {
-		t.Error("VRFProofFromBytes(proof.Bytes()) does not round trip")
-	}
+	t.Run("output", func(t *testing.T) {
+		for _, tt := range []struct {
+			name string
+			in   []byte
+		}{
+			{"nil", nil},
+			{"empty", []byte{}},
+			{"short", ob[:VRFOutputLen-1]},
+			{"long", append(ob[:], 0)},
+			{"all 0xff", bytes.Repeat([]byte{0xff}, VRFOutputLen)},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				_, err := VRFOutputFromBytes(tt.in)
+				assert.ErrorIs(t, err, ErrInvalidVRFOutput)
+			})
+		}
+	})
+
+	t.Run("proof", func(t *testing.T) {
+		for _, tt := range []struct {
+			name string
+			in   []byte
+		}{
+			{"nil", nil},
+			{"empty", []byte{}},
+			{"short", pb[:VRFProofLen-1]},
+			{"long", append(pb[:], 0)},
+			{"all 0xff", bytes.Repeat([]byte{0xff}, VRFProofLen)},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				_, err := VRFProofFromBytes(tt.in)
+				assert.ErrorIs(t, err, ErrInvalidVRFProof)
+			})
+		}
+	})
 }
 
-func TestVRFProofFromBytesRejectsInvalid(t *testing.T) {
-	cases := map[string][]byte{
-		"empty": nil,
-		"short": make([]byte, 63),
-		"long":  make([]byte, 65),
-	}
-	for name, b := range cases {
-		t.Run(name, func(t *testing.T) {
-			if _, err := VRFProofFromBytes(b); !errors.Is(err, ErrInvalidVRFProof) {
-				t.Errorf("VRFProofFromBytes(%s) error = %v, want %v", name, err, ErrInvalidVRFProof)
-			}
-		})
-	}
+func TestVRFZeroValuesAndString(t *testing.T) {
+	var (
+		uninitOut   VRFOutput
+		uninitProof VRFProof
+		nilOut      *VRFOutput
+		nilProof    *VRFProof
+	)
+
+	out, proof := vrfOK(t, aliceKey(t))
+	ob, pb := out.Bytes(), proof.Bytes()
+
+	assert.True(t, uninitOut.IsZero())
+	assert.True(t, uninitProof.IsZero())
+	assert.True(t, nilOut.IsZero())
+	assert.True(t, nilProof.IsZero())
+	assert.False(t, out.IsZero())
+	assert.False(t, proof.IsZero())
+
+	assert.False(t, out.Equal(nil))
+	assert.False(t, proof.Equal(nil))
+
+	assert.Equal(t, hex.EncodeToString(ob[:]), out.String())
+	assert.Equal(t, hex.EncodeToString(pb[:]), proof.String())
 }
 
-func TestVRFOutputDiffersForDifferentMessages(t *testing.T) {
-	priv := aliceKey(t)
-	out1, _, err := SignVRF(priv, testCtx, testMsg)
-	if err != nil {
-		t.Fatalf("SignVRF failed: %v", err)
-	}
-	out2, _, err := SignVRF(priv, testCtx, []byte("a different message"))
-	if err != nil {
-		t.Fatalf("SignVRF failed: %v", err)
-	}
-
-	w1, w2 := out1.Bytes(), out2.Bytes()
-	if bytes.Equal(w1[:], w2[:]) {
-		t.Error("SignVRF produced the same output for two different messages")
-	}
+func TestSignVRFRejectsNilKey(t *testing.T) {
+	_, _, err := SignVRF(nil, testCtx, testMsg)
+	assert.ErrorIs(t, err, ErrInvalidPrivateKey)
 }

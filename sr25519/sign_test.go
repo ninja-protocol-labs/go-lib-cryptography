@@ -1,128 +1,74 @@
 package sr25519
 
 import (
-	"bytes"
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSignVerifyRoundTrip(t *testing.T) {
-	priv := aliceKey(t)
-	pub, err := priv.PublicKey()
-	if err != nil {
-		t.Fatalf("PublicKey failed: %v", err)
-	}
+	msgs := [][]byte{nil, {}, testMsg, make([]byte, 4096)}
 
-	sig, err := Sign(priv, testCtx, testMsg)
-	if err != nil {
-		t.Fatalf("Sign failed: %v", err)
-	}
-	if !Verify(pub, testCtx, testMsg, sig) {
-		t.Error("Verify rejected a signature Sign just produced")
-	}
-}
+	for range 10 {
+		k := randKey(t)
 
-func TestSignVaries(t *testing.T) {
-	priv := aliceKey(t)
-	sig1, err := Sign(priv, testCtx, testMsg)
-	if err != nil {
-		t.Fatalf("Sign failed: %v", err)
-	}
-	sig2, err := Sign(priv, testCtx, testMsg)
-	if err != nil {
-		t.Fatalf("Sign failed: %v", err)
-	}
-	// schnorrkel draws a fresh random nonce per signature — unlike
-	// secp256k1/ed25519/ed448's deterministic plain Sign, two signatures
-	// over the same key and message must differ.
-	if sig1.Bytes() == sig2.Bytes() {
-		t.Error("Sign produced identical signatures on two separate calls")
-	}
-}
-
-func TestVerifyRejectsWrongMessageKeyAndContext(t *testing.T) {
-	priv := aliceKey(t)
-	pub, err := priv.PublicKey()
-	if err != nil {
-		t.Fatalf("PublicKey failed: %v", err)
-	}
-	otherPriv := seckeyN(t, 2)
-	otherPub, err := otherPriv.PublicKey()
-	if err != nil {
-		t.Fatalf("PublicKey failed: %v", err)
-	}
-
-	sig, err := Sign(priv, testCtx, testMsg)
-	if err != nil {
-		t.Fatalf("Sign failed: %v", err)
-	}
-
-	if Verify(pub, testCtx, append(append([]byte{}, testMsg...), 0x00), sig) {
-		t.Error("Verify accepted a signature under a modified message")
-	}
-	if Verify(otherPub, testCtx, testMsg, sig) {
-		t.Error("Verify accepted a signature under the wrong public key")
-	}
-	if Verify(pub, []byte("different context"), testMsg, sig) {
-		t.Error("Verify accepted a signature under the wrong context")
-	}
-}
-
-func TestSignatureFromBytesRoundTrip(t *testing.T) {
-	priv := aliceKey(t)
-	sig, err := Sign(priv, testCtx, testMsg)
-	if err != nil {
-		t.Fatalf("Sign failed: %v", err)
-	}
-
-	wire := sig.Bytes()
-	parsed, err := SignatureFromBytes(wire[:])
-	if err != nil {
-		t.Fatalf("SignatureFromBytes failed: %v", err)
-	}
-	if parsed.Bytes() != wire {
-		t.Error("SignatureFromBytes(sig.Bytes()) does not round trip")
-	}
-}
-
-func TestSignatureFromBytesRejectsInvalid(t *testing.T) {
-	cases := map[string][]byte{
-		"empty": nil,
-		"short": make([]byte, SignatureLen-1),
-		"long":  make([]byte, SignatureLen+1),
-	}
-	for name, b := range cases {
-		t.Run(name, func(t *testing.T) {
-			if _, err := SignatureFromBytes(b); !errors.Is(err, ErrInvalidSignature) {
-				t.Errorf("SignatureFromBytes(%s) error = %v, want %v", name, err, ErrInvalidSignature)
-			}
-		})
-	}
-
-	t.Run("missing schnorrkel marker bit", func(t *testing.T) {
-		priv := aliceKey(t)
-		sig, err := Sign(priv, testCtx, testMsg)
-		if err != nil {
-			t.Fatalf("Sign failed: %v", err)
+		for _, msg := range msgs {
+			sig, err := Sign(k, testCtx, msg)
+			require.NoError(t, err)
+			assert.True(t, Verify(k.PublicKey(), testCtx, msg, sig))
 		}
-		wire := sig.Bytes()
-		wire[63] &^= 0x80 // clear the high bit that marks it as schnorrkel
-		if _, err := SignatureFromBytes(wire[:]); !errors.Is(err, ErrInvalidSignature) {
-			t.Errorf("SignatureFromBytes error = %v, want %v", err, ErrInvalidSignature)
-		}
+	}
+}
+
+// Signing draws a fresh nonce per call, so the bytes differ every time
+// and both signatures still verify.
+func TestSignIsRandomized(t *testing.T) {
+	k := aliceKey(t)
+
+	a, err := Sign(k, testCtx, testMsg)
+	require.NoError(t, err)
+	b, err := Sign(k, testCtx, testMsg)
+	require.NoError(t, err)
+
+	assert.False(t, a.Equal(b), "two signatures over the same message are identical")
+	assert.True(t, Verify(k.PublicKey(), testCtx, testMsg, a))
+	assert.True(t, Verify(k.PublicKey(), testCtx, testMsg, b))
+}
+
+func TestVerifyRejects(t *testing.T) {
+	k := aliceKey(t)
+	other := randKey(t)
+	sig := signOK(t, k)
+
+	t.Run("wrong key", func(t *testing.T) {
+		assert.False(t, Verify(other.PublicKey(), testCtx, testMsg, sig))
+	})
+
+	t.Run("wrong message", func(t *testing.T) {
+		assert.False(t, Verify(k.PublicKey(), testCtx, []byte("another"), sig))
+	})
+
+	t.Run("wrong context", func(t *testing.T) {
+		assert.False(t, Verify(k.PublicKey(), []byte("other ctx"), testMsg, sig))
+	})
+
+	t.Run("tampered signature", func(t *testing.T) {
+		bad := *sig
+		bad.sig[0] ^= 0x01
+		assert.False(t, Verify(k.PublicKey(), testCtx, testMsg, &bad))
+	})
+
+	t.Run("nil key", func(t *testing.T) {
+		assert.False(t, Verify(nil, testCtx, testMsg, sig))
+	})
+
+	t.Run("nil signature", func(t *testing.T) {
+		assert.False(t, Verify(k.PublicKey(), testCtx, testMsg, nil))
 	})
 }
 
-func TestSignAndVerifyByteEquality(t *testing.T) {
-	// Sanity check that Signature.Bytes() actually reflects what was
-	// parsed/produced, not a stale zero value.
-	priv := aliceKey(t)
-	sig, err := Sign(priv, testCtx, testMsg)
-	if err != nil {
-		t.Fatalf("Sign failed: %v", err)
-	}
-	wire := sig.Bytes()
-	if bytes.Equal(wire[:], make([]byte, SignatureLen)) {
-		t.Error("Sign produced an all-zero signature")
-	}
+func TestSignRejectsNilKey(t *testing.T) {
+	_, err := Sign(nil, testCtx, testMsg)
+	assert.ErrorIs(t, err, ErrInvalidPrivateKey)
 }

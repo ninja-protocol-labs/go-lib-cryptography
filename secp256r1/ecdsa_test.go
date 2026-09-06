@@ -1,152 +1,87 @@
 package secp256r1
 
-import "testing"
+import (
+	"testing"
 
-func TestSignCompactVerifyCompactRoundTrip(t *testing.T) {
-	priv := seckeyOne(t)
-	pub, err := priv.PublicKey()
-	if err != nil {
-		t.Fatalf("PublicKey failed: %v", err)
-	}
+	"github.com/stretchr/testify/assert"
+)
 
-	sig, err := SignCompact(priv, testMsg)
-	if err != nil {
-		t.Fatalf("SignCompact failed: %v", err)
-	}
+func TestSignVerifyRoundTrip(t *testing.T) {
+	for range 50 {
+		k := randKey(t)
+		d := randDigest(t)
 
-	if !VerifyCompact(pub, testMsg, sig[:]) {
-		t.Error("VerifyCompact rejected a signature it just produced")
+		sig := signOK(t, k, d)
+		assert.True(t, Verify(k.PublicKey(), d, sig))
 	}
 }
 
-func TestSignDERVerifyDERRoundTrip(t *testing.T) {
-	priv := seckeyOne(t)
-	pub, err := priv.PublicKey()
-	if err != nil {
-		t.Fatalf("PublicKey failed: %v", err)
-	}
+// crypto/ecdsa mixes fresh entropy into every signature, so the same
+// input signs differently each time and both signatures verify.
+func TestSignIsRandomized(t *testing.T) {
+	k := randKey(t)
+	d := randDigest(t)
 
-	sig, err := SignDER(priv, testMsg)
-	if err != nil {
-		t.Fatalf("SignDER failed: %v", err)
-	}
+	a, b := signOK(t, k, d), signOK(t, k, d)
 
-	if !VerifyDER(pub, testMsg, sig[:]) {
-		t.Error("VerifyDER rejected a signature it just produced")
+	assert.False(t, a.Equal(b), "two signatures over the same digest are identical")
+	assert.True(t, Verify(k.PublicKey(), d, a))
+	assert.True(t, Verify(k.PublicKey(), d, b))
+}
+
+func TestSignRejectsBadInput(t *testing.T) {
+	k := randKey(t)
+	d := randDigest(t)
+
+	t.Run("nil key", func(t *testing.T) {
+		_, err := Sign(nil, d)
+		assert.ErrorIs(t, err, ErrInvalidPrivateKey)
+	})
+
+	for _, tt := range []struct {
+		name string
+		in   []byte
+	}{
+		{"nil digest", nil},
+		{"short", d[:DigestLen-1]},
+		{"long", append(d, 0)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Sign(k, tt.in)
+			assert.ErrorIs(t, err, ErrInvalidDigest)
+		})
 	}
 }
 
-func TestSignDigestCompactRoundTrip(t *testing.T) {
-	priv := seckeyOne(t)
-	pub, err := priv.PublicKey()
-	if err != nil {
-		t.Fatalf("PublicKey failed: %v", err)
-	}
-	var digest [32]byte
-	copy(digest[:], testMsg)
+func TestVerifyRejects(t *testing.T) {
+	k := randKey(t)
+	other := randKey(t)
+	d := randDigest(t)
+	sig := signOK(t, k, d)
 
-	sig, err := SignDigestCompact(priv, digest)
-	if err != nil {
-		t.Fatalf("SignDigestCompact failed: %v", err)
-	}
-	if !VerifyDigestCompact(pub, digest, sig[:]) {
-		t.Error("VerifyDigestCompact rejected a signature it just produced")
-	}
-}
+	t.Run("wrong key", func(t *testing.T) {
+		assert.False(t, Verify(other.PublicKey(), d, sig))
+	})
 
-func TestSignDigestDERRoundTrip(t *testing.T) {
-	priv := seckeyOne(t)
-	pub, err := priv.PublicKey()
-	if err != nil {
-		t.Fatalf("PublicKey failed: %v", err)
-	}
-	var digest [32]byte
-	copy(digest[:], testMsg)
+	t.Run("wrong digest", func(t *testing.T) {
+		assert.False(t, Verify(k.PublicKey(), randDigest(t), sig))
+	})
 
-	sig, err := SignDigestDER(priv, digest)
-	if err != nil {
-		t.Fatalf("SignDigestDER failed: %v", err)
-	}
-	if !VerifyDigestDER(pub, digest, sig[:]) {
-		t.Error("VerifyDigestDER rejected a signature it just produced")
-	}
-}
+	t.Run("tampered signature", func(t *testing.T) {
+		bad := *sig
+		bad.r[0] ^= 0x01
+		assert.False(t, Verify(k.PublicKey(), d, &bad))
+	})
 
-// crypto/ecdsa.Sign always mixes fresh entropy in, unlike secp256k1's
-// RFC-6979 default — so, unlike secp256k1's ECDSA tests, there is no
-// "IsDeterministic" case to check here. This is the equivalent property:
-// two signatures over the same input differ, and both still verify.
-func TestSignCompactVariesButBothVerify(t *testing.T) {
-	priv := seckeyOne(t)
-	pub, err := priv.PublicKey()
-	if err != nil {
-		t.Fatalf("PublicKey failed: %v", err)
-	}
+	t.Run("nil key", func(t *testing.T) {
+		assert.False(t, Verify(nil, d, sig))
+	})
 
-	sig1, err := SignCompact(priv, testMsg)
-	if err != nil {
-		t.Fatalf("SignCompact failed: %v", err)
-	}
-	sig2, err := SignCompact(priv, testMsg)
-	if err != nil {
-		t.Fatalf("SignCompact failed: %v", err)
-	}
+	t.Run("nil signature", func(t *testing.T) {
+		assert.False(t, Verify(k.PublicKey(), d, nil))
+	})
 
-	if sig1 == sig2 {
-		t.Error("SignCompact produced identical signatures across two calls")
-	}
-	if !VerifyCompact(pub, testMsg, sig1[:]) || !VerifyCompact(pub, testMsg, sig2[:]) {
-		t.Error("VerifyCompact rejected one of two independently-signed signatures")
-	}
-}
-
-func TestVerifyCompactRejectsWrongKeyMessageAndLength(t *testing.T) {
-	priv := seckeyOne(t)
-	pub, err := priv.PublicKey()
-	if err != nil {
-		t.Fatalf("PublicKey failed: %v", err)
-	}
-	otherPub, err := seckeyN(t, 2).PublicKey()
-	if err != nil {
-		t.Fatalf("PublicKey failed: %v", err)
-	}
-
-	sig, err := SignCompact(priv, testMsg)
-	if err != nil {
-		t.Fatalf("SignCompact failed: %v", err)
-	}
-
-	if VerifyCompact(otherPub, testMsg, sig[:]) {
-		t.Error("VerifyCompact accepted a signature under the wrong public key")
-	}
-	if VerifyCompact(pub, []byte("a different message"), sig[:]) {
-		t.Error("VerifyCompact accepted a signature over the wrong message")
-	}
-	if VerifyCompact(pub, testMsg, sig[:len(sig)-1]) {
-		t.Error("VerifyCompact accepted a truncated signature")
-	}
-}
-
-func TestVerifyDERRejectsWrongKeyAndMessage(t *testing.T) {
-	priv := seckeyOne(t)
-	pub, err := priv.PublicKey()
-	if err != nil {
-		t.Fatalf("PublicKey failed: %v", err)
-	}
-	otherPub, err := seckeyN(t, 2).PublicKey()
-	if err != nil {
-		t.Fatalf("PublicKey failed: %v", err)
-	}
-
-	sig, err := SignDER(priv, testMsg)
-	if err != nil {
-		t.Fatalf("SignDER failed: %v", err)
-	}
-
-	if VerifyDER(otherPub, testMsg, sig[:]) {
-		t.Error("VerifyDER accepted a signature under the wrong public key")
-	}
-	if VerifyDER(pub, []byte("a different message"), sig[:]) {
-		t.Error("VerifyDER accepted a signature over the wrong message")
-	}
+	t.Run("short digest", func(t *testing.T) {
+		assert.False(t, Verify(k.PublicKey(), d[:DigestLen-1], sig))
+	})
 }

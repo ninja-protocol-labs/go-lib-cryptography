@@ -8,7 +8,7 @@ import (
 )
 
 type PublicKey struct {
-	key eddsa.PublicKey
+	key [PubkeyLen]byte
 }
 
 // PublicKeyFromBytes parses a compressed point, checking that it is on the
@@ -21,7 +21,10 @@ type PublicKey struct {
 // not on the curve, and the subgroup test it then runs is only meaningful
 // for points that are.
 func PublicKeyFromBytes(b []byte) (*PublicKey, error) {
-	var k eddsa.PublicKey
+	var (
+		out [PubkeyLen]byte
+		k   eddsa.PublicKey
+	)
 
 	if len(b) != PubkeyLen {
 		return nil, ErrInvalidPublicKey
@@ -40,23 +43,21 @@ func PublicKeyFromBytes(b []byte) (*PublicKey, error) {
 		return nil, ErrInvalidPublicKey
 	}
 
+	copy(out[:], b)
 	return &PublicKey{
-		key: k,
+		key: out,
 	}, nil
 }
 
 func (k *PublicKey) Bytes() [PubkeyLen]byte {
-	var b [PubkeyLen]byte
-
-	copy(b[:], k.key.Bytes())
-	return b
+	return k.key
 }
 
 func (k *PublicKey) Equal(o *PublicKey) bool {
 	if o == nil {
 		return false
 	}
-	return k.key.Equal(&o.key)
+	return k.key == o.key
 }
 
 // IsZero catches a `var k PublicKey`; no constructor returns one.
@@ -65,6 +66,14 @@ func (k *PublicKey) IsZero() bool {
 }
 
 func (k *PublicKey) String() string {
-	b := k.Bytes()
-	return encoding.Hex.Encode(b[:])
+	return encoding.Hex.Encode(k.key[:])
+}
+
+// verifier is k in the form gnark takes; k.key was parsed at
+// construction, so the error cannot fire.
+func (k *PublicKey) verifier() *eddsa.PublicKey {
+	var pub eddsa.PublicKey
+
+	_, _ = pub.SetBytes(k.key[:])
+	return &pub
 }
