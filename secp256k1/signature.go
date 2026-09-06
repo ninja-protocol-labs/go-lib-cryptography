@@ -3,6 +3,8 @@ package secp256k1
 import (
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4/ecdsa"
+
+	"github.com/ninja-protocol-labs/go-lib-cryptography/encoding"
 )
 
 type Signature struct {
@@ -71,6 +73,17 @@ func (sig *Signature) Equal(other *Signature) bool {
 		return false
 	}
 	return sig.r == other.r && sig.s == other.s
+}
+
+// IsZero catches a `var sig Signature`; no constructor returns one, since
+// r and s are both rejected at zero.
+func (sig *Signature) IsZero() bool {
+	return sig == nil || *sig == Signature{}
+}
+
+func (sig *Signature) String() string {
+	b := sig.Bytes()
+	return encoding.Hex.Encode(b[:])
 }
 
 // scalars is sig in the form dcrd takes; both halves were range-checked at
