@@ -1,3 +1,0 @@
-[submodule "bls12381/internal/lib/blst"]
-	path = bls12381/internal/lib/blst
-	url = https://github.com/supranational/blst.git

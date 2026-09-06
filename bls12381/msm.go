@@ -1,15 +1,17 @@
 package bls12381
 
-import "github.com/ninja-protocol-labs/go-lib-cryptography/bls12381/internal"
+import (
+	"github.com/consensys/gnark-crypto/ecc"
+	"github.com/consensys/gnark-crypto/ecc/bls12-381"
+	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
+)
 
 // MultiScalarMultG1 computes the sum of scalars[i]*points[i] via
-// Pippenger's algorithm, faster than doing each Mul+Add individually for
-// more than a handful of points. Every scalar is a big-endian 32-byte
-// value; points and scalars must describe the same, non-empty count.
-//
-// As with G1Point.Mul, blst's bit-width argument is not part of this API:
-// the scalar width is fixed by its type, so there is nothing left for it
-// to describe.
+// gnark-crypto's Pippenger multi-exponentiation, faster than doing each
+// Mul+Add individually for more than a handful of points. Every scalar is
+// a big-endian 32-byte value, reduced modulo the group order r — which
+// changes no result, since a point's order divides r. points and scalars
+// must describe the same, non-empty set.
 func MultiScalarMultG1(points []G1Point, scalars [][SeckeyLen]byte) (G1Point, error) {
 	var zero G1Point
 	if len(points) != len(scalars) {
@@ -19,15 +21,18 @@ func MultiScalarMultG1(points []G1Point, scalars [][SeckeyLen]byte) (G1Point, er
 		return zero, ErrLengthMismatch
 	}
 
-	pointBuf := make([]byte, 0, len(points)*internal.P1AffineLen)
-	scalarBuf := make([]byte, 0, len(points)*SeckeyLen)
-	for i, p := range points {
-		pointBuf = append(pointBuf, p[:]...)
-		scalarBuf = append(scalarBuf, scalars[i][:]...)
+	gps := make([]bls12381.G1Affine, len(points))
+	frs := make([]fr.Element, len(scalars))
+	for i := range points {
+		gps[i] = points[i].p
+		frs[i].SetBytes(scalars[i][:])
 	}
 
-	scratch := make([]byte, internal.P1sMultPippengerScratchSizeof(len(points)))
-	return internal.P1sMultPippenger(pointBuf, scalarBuf, scalarBits, scratch), nil
+	var out G1Point
+	if _, err := out.p.MultiExp(gps, frs, ecc.MultiExpConfig{}); err != nil {
+		return zero, err
+	}
+	return out, nil
 }
 
 // MultiScalarMultG2 is MultiScalarMultG1's mirror in G2.
@@ -40,13 +45,16 @@ func MultiScalarMultG2(points []G2Point, scalars [][SeckeyLen]byte) (G2Point, er
 		return zero, ErrLengthMismatch
 	}
 
-	pointBuf := make([]byte, 0, len(points)*internal.P2AffineLen)
-	scalarBuf := make([]byte, 0, len(points)*SeckeyLen)
-	for i, p := range points {
-		pointBuf = append(pointBuf, p[:]...)
-		scalarBuf = append(scalarBuf, scalars[i][:]...)
+	gps := make([]bls12381.G2Affine, len(points))
+	frs := make([]fr.Element, len(scalars))
+	for i := range points {
+		gps[i] = points[i].p
+		frs[i].SetBytes(scalars[i][:])
 	}
 
-	scratch := make([]byte, internal.P2sMultPippengerScratchSizeof(len(points)))
-	return internal.P2sMultPippenger(pointBuf, scalarBuf, scalarBits, scratch), nil
+	var out G2Point
+	if _, err := out.p.MultiExp(gps, frs, ecc.MultiExpConfig{}); err != nil {
+		return zero, err
+	}
+	return out, nil
 }

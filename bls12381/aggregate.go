@@ -1,199 +1,203 @@
 package bls12381
 
-import "github.com/ninja-protocol-labs/go-lib-cryptography/bls12381/internal"
+import "github.com/consensys/gnark-crypto/ecc/bls12-381"
 
-// AggregatePublicKeysMinPk sums a set of min-pk public keys into one. Each
-// input is already validated (parsed via PublicKeyMinPkFromBytes or
-// derived from a PrivateKey), so this only checks the set is non-empty.
+// Sums are accumulated in Jacobian coordinates: the zero value is the point
+// at infinity, so the accumulator needs no special case for the first term,
+// and each addition avoids an inversion.
+
+// AggregatePublicKeysMinPk sums a set of min-pk public keys into one. Every
+// input was validated when it was parsed or derived, so this only checks
+// the set is non-empty.
 func AggregatePublicKeysMinPk(pks []*PublicKeyMinPk) (*PublicKeyMinPk, error) {
+	var (
+		acc bls12381.G1Jac
+		sum bls12381.G1Affine
+	)
+
 	if len(pks) == 0 {
 		return nil, ErrAggregateFailed
 	}
-	buf := make([]byte, 0, len(pks)*internal.P1AffineLen)
+
 	for _, pk := range pks {
 		if pk == nil {
 			return nil, ErrAggregateFailed
 		}
-		buf = append(buf, pk.point[:]...)
+
+		var term bls12381.G1Jac
+		p := pk.point()
+		term.FromAffine(&p)
+		acc.AddAssign(&term)
 	}
-	point, code := internal.P1sAggregateAffine(buf)
-	if code != internal.ErrSuccess {
-		return nil, ErrAggregateFailed
-	}
-	return &PublicKeyMinPk{point: point}, nil
+
+	sum.FromJacobian(&acc)
+	return &PublicKeyMinPk{
+		key: sum.Bytes(),
+	}, nil
 }
 
-// AggregatePublicKeysMinSig is AggregatePublicKeysMinPk's mirror for
-// min-sig public keys.
 func AggregatePublicKeysMinSig(pks []*PublicKeyMinSig) (*PublicKeyMinSig, error) {
+	var (
+		acc bls12381.G2Jac
+		sum bls12381.G2Affine
+	)
+
 	if len(pks) == 0 {
 		return nil, ErrAggregateFailed
 	}
-	buf := make([]byte, 0, len(pks)*internal.P2AffineLen)
+
 	for _, pk := range pks {
 		if pk == nil {
 			return nil, ErrAggregateFailed
 		}
-		buf = append(buf, pk.point[:]...)
+
+		var term bls12381.G2Jac
+		p := pk.point()
+		term.FromAffine(&p)
+		acc.AddAssign(&term)
 	}
-	point, code := internal.P2sAggregateAffine(buf)
-	if code != internal.ErrSuccess {
-		return nil, ErrAggregateFailed
-	}
-	return &PublicKeyMinSig{point: point}, nil
+
+	sum.FromJacobian(&acc)
+	return &PublicKeyMinSig{
+		key: sum.Bytes(),
+	}, nil
 }
 
-// AggregateSignaturesMinPk sums a set of min-pk signatures (each
-// SignatureMinPkLen bytes, e.g. from SignMinPk) into one compressed
-// signature. Unlike AggregatePublicKeysMinPk, each signature here is
-// untrusted wire data — encoding, on-curve, and subgroup membership are all
-// checked as it's parsed.
-func AggregateSignaturesMinPk(sigs [][]byte) ([SignatureMinPkLen]byte, error) {
-	var out [SignatureMinPkLen]byte
-	if len(sigs) == 0 {
-		return out, ErrAggregateFailed
-	}
-	buf := make([]byte, 0, len(sigs)*internal.P2CompressedLen)
+// AggregateSignaturesMinPk sums a set of signatures in one pass. Use
+// SignatureAggregatorMinPk directly when they arrive over time.
+func AggregateSignaturesMinPk(sigs []*SignatureMinPk) (*SignatureMinPk, error) {
+	var a SignatureAggregatorMinPk
+
 	for _, sig := range sigs {
-		if len(sig) != internal.P2CompressedLen {
-			return out, ErrInvalidSignature
+		if err := a.Add(sig); err != nil {
+			return nil, err
 		}
-		buf = append(buf, sig...)
 	}
-	point, code := internal.P2sAggregateCompressed(buf)
-	if code != internal.ErrSuccess {
-		return out, ErrAggregateFailed
-	}
-	return internal.P2AffineCompress(&point), nil
+	return a.Signature()
 }
 
-// AggregateSignaturesMinSig is AggregateSignaturesMinPk's mirror for
-// min-sig signatures (each SignatureMinSigLen bytes).
-func AggregateSignaturesMinSig(sigs [][]byte) ([SignatureMinSigLen]byte, error) {
-	var out [SignatureMinSigLen]byte
-	if len(sigs) == 0 {
-		return out, ErrAggregateFailed
-	}
-	buf := make([]byte, 0, len(sigs)*internal.P1CompressedLen)
+func AggregateSignaturesMinSig(sigs []*SignatureMinSig) (*SignatureMinSig, error) {
+	var a SignatureAggregatorMinSig
+
 	for _, sig := range sigs {
-		if len(sig) != internal.P1CompressedLen {
-			return out, ErrInvalidSignature
+		if err := a.Add(sig); err != nil {
+			return nil, err
 		}
-		buf = append(buf, sig...)
 	}
-	point, code := internal.P1sAggregateCompressed(buf)
-	if code != internal.ErrSuccess {
-		return out, ErrAggregateFailed
-	}
-	return internal.P1AffineCompress(&point), nil
+	return a.Signature()
 }
 
-// AggregateVerifyMinPk verifies an aggregated min-pk signature against
-// distinct (pk, message) pairs — the general case where every signer
-// signed their own message, unlike a single shared message. pks and msgs
-// must have the same, non-zero length; msgs[i] is checked against pks[i].
-// Uses DefaultDSTMinPk.
-func AggregateVerifyMinPk(pks []*PublicKeyMinPk, msgs [][]byte, aggSig []byte) bool {
-	return AggregateVerifyMinPkWithDST(pks, msgs, aggSig, []byte(DefaultDSTMinPk))
+// AggregateVerifyMinPk verifies an aggregated signature against distinct
+// (public key, message) pairs — the general case, where every signer signed
+// their own message. pks and msgs must have the same, non-zero length, and
+// msgs[i] is checked against pks[i]. Uses DefaultDSTMinPk.
+//
+// The whole check is one product of pairings:
+// ∏ e(pkᵢ, H(msgᵢ)) · e(-G1, sig) == 1.
+func AggregateVerifyMinPk(pks []*PublicKeyMinPk, msgs [][]byte, sig *SignatureMinPk) bool {
+	return AggregateVerifyMinPkWithDST(pks, msgs, sig, []byte(DefaultDSTMinPk))
 }
 
-// AggregateVerifyMinPkWithDST is AggregateVerifyMinPk with a
-// caller-supplied domain separation tag.
-func AggregateVerifyMinPkWithDST(pks []*PublicKeyMinPk, msgs [][]byte, aggSig, dst []byte) bool {
-	if len(pks) == 0 || len(pks) != len(msgs) || len(aggSig) != internal.P2CompressedLen {
+func AggregateVerifyMinPkWithDST(pks []*PublicKeyMinPk, msgs [][]byte, sig *SignatureMinPk, dst []byte) bool {
+	if len(pks) == 0 || len(pks) != len(msgs) || sig == nil {
 		return false
 	}
 
-	var compressed [internal.P2CompressedLen]byte
-	copy(compressed[:], aggSig)
-	sigPoint, code := internal.P2Uncompress(&compressed)
-	if code != internal.ErrSuccess || !internal.P2AffineInG2(&sigPoint) {
-		return false
-	}
-
-	ctx := make([]byte, internal.PairingSizeof()+len(dst))
-	internal.PairingInit(ctx, true, dst)
+	ps := make([]bls12381.G1Affine, 0, len(pks)+1)
+	qs := make([]bls12381.G2Affine, 0, len(pks)+1)
 	for i, pk := range pks {
 		if pk == nil {
 			return false
 		}
-		if code := internal.PairingAggregatePkInG1(ctx, &pk.point, nil, msgs[i], nil); code != internal.ErrSuccess {
+
+		h, err := bls12381.HashToG2(msgs[i], dst)
+		if err != nil {
 			return false
 		}
+
+		ps = append(ps, pk.point())
+		qs = append(qs, h)
 	}
-	internal.PairingCommit(ctx)
+	ps = append(ps, g1GenNeg)
+	qs = append(qs, sig.point())
 
-	gtsig := internal.AggregatedInG2(&sigPoint)
-	return internal.PairingFinalVerify(ctx, &gtsig)
+	ok, err := bls12381.PairingCheck(ps, qs)
+	return err == nil && ok
 }
 
-// AggregateVerifyMinSig is AggregateVerifyMinPk's mirror for the min-sig
-// scheme. Uses DefaultDSTMinSig.
-func AggregateVerifyMinSig(pks []*PublicKeyMinSig, msgs [][]byte, aggSig []byte) bool {
-	return AggregateVerifyMinSigWithDST(pks, msgs, aggSig, []byte(DefaultDSTMinSig))
+// AggregateVerifyMinSig is AggregateVerifyMinPk's mirror. Uses
+// DefaultDSTMinSig.
+func AggregateVerifyMinSig(pks []*PublicKeyMinSig, msgs [][]byte, sig *SignatureMinSig) bool {
+	return AggregateVerifyMinSigWithDST(pks, msgs, sig, []byte(DefaultDSTMinSig))
 }
 
-// AggregateVerifyMinSigWithDST is AggregateVerifyMinSig with a
-// caller-supplied domain separation tag.
-func AggregateVerifyMinSigWithDST(pks []*PublicKeyMinSig, msgs [][]byte, aggSig, dst []byte) bool {
-	if len(pks) == 0 || len(pks) != len(msgs) || len(aggSig) != internal.P1CompressedLen {
+func AggregateVerifyMinSigWithDST(pks []*PublicKeyMinSig, msgs [][]byte, sig *SignatureMinSig, dst []byte) bool {
+	var sigNeg bls12381.G1Affine
+
+	if len(pks) == 0 || len(pks) != len(msgs) || sig == nil {
 		return false
 	}
 
-	var compressed [internal.P1CompressedLen]byte
-	copy(compressed[:], aggSig)
-	sigPoint, code := internal.P1Uncompress(&compressed)
-	if code != internal.ErrSuccess || !internal.P1AffineInG1(&sigPoint) {
-		return false
-	}
-
-	ctx := make([]byte, internal.PairingSizeof()+len(dst))
-	internal.PairingInit(ctx, true, dst)
+	ps := make([]bls12381.G1Affine, 0, len(pks)+1)
+	qs := make([]bls12381.G2Affine, 0, len(pks)+1)
 	for i, pk := range pks {
 		if pk == nil {
 			return false
 		}
-		if code := internal.PairingAggregatePkInG2(ctx, &pk.point, nil, msgs[i], nil); code != internal.ErrSuccess {
+
+		h, err := bls12381.HashToG1(msgs[i], dst)
+		if err != nil {
 			return false
 		}
-	}
-	internal.PairingCommit(ctx)
 
-	gtsig := internal.AggregatedInG1(&sigPoint)
-	return internal.PairingFinalVerify(ctx, &gtsig)
+		ps = append(ps, h)
+		qs = append(qs, pk.point())
+	}
+
+	p := sig.point()
+	sigNeg.Neg(&p)
+	ps = append(ps, sigNeg)
+	qs = append(qs, g2Gen)
+
+	ok, err := bls12381.PairingCheck(ps, qs)
+	return err == nil && ok
 }
 
-// FastAggregateVerifyMinPk verifies an aggregated min-pk signature against
-// a single shared message, signed by every key in pks — the common case
-// (all validators attesting to the same block, etc.), cheaper than
-// AggregateVerifyMinPk since the public keys are summed once instead of
+// FastAggregateVerifyMinPk verifies an aggregated signature over a single
+// shared message signed by every key in pks — the common case, and cheaper
+// than AggregateVerifyMinPk because the keys are summed once instead of
 // paired individually. Uses DefaultDSTMinPk.
-func FastAggregateVerifyMinPk(pks []*PublicKeyMinPk, msg, aggSig []byte) bool {
-	return FastAggregateVerifyMinPkWithDST(pks, msg, aggSig, []byte(DefaultDSTMinPk))
+//
+// This is only sound when every key in pks is known to have a matching
+// private key. The default ciphersuite is the basic scheme, which does not
+// establish that: an attacker who registers pk' = x·G - Σpkᵢ can produce an
+// aggregate signature that verifies for a message the honest signers never
+// saw (the rogue key attack). Applications taking public keys from
+// untrusted parties must bind each key to a proof of possession — the
+// _POP_ ciphersuite, via the WithDST variants — and check those proofs
+// before calling this.
+func FastAggregateVerifyMinPk(pks []*PublicKeyMinPk, msg []byte, sig *SignatureMinPk) bool {
+	return FastAggregateVerifyMinPkWithDST(pks, msg, sig, []byte(DefaultDSTMinPk))
 }
 
-// FastAggregateVerifyMinPkWithDST is FastAggregateVerifyMinPk with a
-// caller-supplied domain separation tag.
-func FastAggregateVerifyMinPkWithDST(pks []*PublicKeyMinPk, msg, aggSig, dst []byte) bool {
+func FastAggregateVerifyMinPkWithDST(pks []*PublicKeyMinPk, msg []byte, sig *SignatureMinPk, dst []byte) bool {
 	pk, err := AggregatePublicKeysMinPk(pks)
 	if err != nil {
 		return false
 	}
-	return VerifyMinPkWithDST(pk, msg, aggSig, dst)
+	return VerifyMinPkWithDST(pk, msg, sig, dst)
 }
 
-// FastAggregateVerifyMinSig is FastAggregateVerifyMinPk's mirror for the
-// min-sig scheme. Uses DefaultDSTMinSig.
-func FastAggregateVerifyMinSig(pks []*PublicKeyMinSig, msg, aggSig []byte) bool {
-	return FastAggregateVerifyMinSigWithDST(pks, msg, aggSig, []byte(DefaultDSTMinSig))
+// FastAggregateVerifyMinSig is FastAggregateVerifyMinPk's mirror, and
+// carries the same rogue key caveat. Uses DefaultDSTMinSig.
+func FastAggregateVerifyMinSig(pks []*PublicKeyMinSig, msg []byte, sig *SignatureMinSig) bool {
+	return FastAggregateVerifyMinSigWithDST(pks, msg, sig, []byte(DefaultDSTMinSig))
 }
 
-// FastAggregateVerifyMinSigWithDST is FastAggregateVerifyMinSig with a
-// caller-supplied domain separation tag.
-func FastAggregateVerifyMinSigWithDST(pks []*PublicKeyMinSig, msg, aggSig, dst []byte) bool {
+func FastAggregateVerifyMinSigWithDST(pks []*PublicKeyMinSig, msg []byte, sig *SignatureMinSig, dst []byte) bool {
 	pk, err := AggregatePublicKeysMinSig(pks)
 	if err != nil {
 		return false
 	}
-	return VerifyMinSigWithDST(pk, msg, aggSig, dst)
+	return VerifyMinSigWithDST(pk, msg, sig, dst)
 }

@@ -1,400 +1,374 @@
 package bls12381
 
-import "github.com/ninja-protocol-labs/go-lib-cryptography/bls12381/internal"
+import (
+	"math/big"
 
-// Pairing-based primitives for protocols that build their own pairing
-// equations rather than using Sign*/Verify*/AggregateVerify* above. G1Point
-// and G2Point are raw, already-parsed curve points (the affine wire form,
-// not compressed); GT is a raw Fp12 element, the pairing's target group.
-//
-// Methods take value receivers (not pointers) so results chain naturally
-// (e.g. G1Generator().Double().Add(p)) — a value receiver's parameter is
-// always addressable inside the method body, so &p below never needs an
-// intermediate copy to become one.
+	"github.com/consensys/gnark-crypto/ecc/bls12-381"
+)
 
-// scalarBits is the bit width blst is told to walk for every scalar this
-// package hands it: the full width of a SeckeyLen-byte value, since that
-// is the only scalar shape the public API accepts.
-const scalarBits = SeckeyLen * 8
+// The group element types. Each wraps its gnark-crypto counterpart in an
+// unexported field rather than aliasing it, so gnark-crypto's field types
+// (fp.Element, E2, E12) never appear in this package's API. All three are
+// comparable, so == and != work on them directly, as do map keys.
 
-// G1Point is a point on G1, in affine form.
-type G1Point [internal.P1AffineLen]byte
+// G1Point is a point in G1, the curve group over 𝔽p.
+type G1Point struct {
+	p bls12381.G1Affine
+}
 
-// G2Point is a point on G2, in affine form.
-type G2Point [internal.P2AffineLen]byte
+// G2Point is a point in G2, the subgroup of the sextic twist over 𝔽p².
+type G2Point struct {
+	p bls12381.G2Affine
+}
 
-// GT is an element of the pairing's target group (Fp12).
-type GT [internal.Fp12Len]byte
+// GT is an element of the target group 𝔾ₜ ⊂ 𝔽p¹², where pairings land.
+type GT struct {
+	e bls12381.GT
+}
 
-// G1Generator returns G1's generator point.
+// G1Generator returns the standard generator of G1.
 func G1Generator() G1Point {
-	return internal.P1AffineGenerator()
+	return G1Point{p: g1Gen}
 }
 
-// G2Generator returns G2's generator point.
+// G2Generator returns the standard generator of G2.
 func G2Generator() G2Point {
-	return internal.P2AffineGenerator()
+	return G2Point{p: g2Gen}
 }
 
-// G1PointFromCompressed parses a 48-byte compressed G1 point, checking both
-// its curve and subgroup membership.
+// G1PointFromCompressed parses a compressed G1 point, checking the
+// encoding, that it is on the curve, and that it is in the prime-order
+// subgroup.
 func G1PointFromCompressed(b []byte) (G1Point, error) {
-	var zero G1Point
-	if len(b) != internal.P1CompressedLen {
-		return zero, ErrInvalidPublicKey
+	var out G1Point
+	if len(b) != G1CompressedLen {
+		return out, ErrInvalidPublicKey
 	}
-	var compressed [internal.P1CompressedLen]byte
-	copy(compressed[:], b)
-	point, code := internal.P1Uncompress(&compressed)
-	if code != internal.ErrSuccess {
-		return zero, ErrInvalidPublicKey
+	if _, err := out.p.SetBytes(b); err != nil {
+		return out, ErrInvalidPublicKey
 	}
-	if !internal.P1AffineInG1(&point) {
-		return zero, ErrInvalidPublicKey
-	}
-	return point, nil
+	return out, nil
 }
 
-// G2PointFromCompressed is G1PointFromCompressed's mirror in G2.
+// G2PointFromCompressed parses a compressed G2 point, with the same
+// checks as G1PointFromCompressed.
 func G2PointFromCompressed(b []byte) (G2Point, error) {
-	var zero G2Point
-	if len(b) != internal.P2CompressedLen {
-		return zero, ErrInvalidPublicKey
+	var out G2Point
+	if len(b) != G2CompressedLen {
+		return out, ErrInvalidPublicKey
 	}
-	var compressed [internal.P2CompressedLen]byte
-	copy(compressed[:], b)
-	point, code := internal.P2Uncompress(&compressed)
-	if code != internal.ErrSuccess {
-		return zero, ErrInvalidPublicKey
+	if _, err := out.p.SetBytes(b); err != nil {
+		return out, ErrInvalidPublicKey
 	}
-	if !internal.P2AffineInG2(&point) {
-		return zero, ErrInvalidPublicKey
-	}
-	return point, nil
+	return out, nil
 }
 
-// Bytes returns p's 48-byte compressed encoding.
+// Bytes returns p compressed.
 func (p G1Point) Bytes() [G1CompressedLen]byte {
-	return internal.P1AffineCompress((*[internal.P1AffineLen]byte)(&p))
+	return p.p.Bytes()
 }
 
-// Bytes returns p's 96-byte compressed encoding.
+// Bytes returns p compressed.
 func (p G2Point) Bytes() [G2CompressedLen]byte {
-	return internal.P2AffineCompress((*[internal.P2AffineLen]byte)(&p))
+	return p.p.Bytes()
 }
 
+// Equal reports whether p and q are the same point.
 func (p G1Point) Equal(q G1Point) bool {
-	return internal.P1AffineIsEqual((*[internal.P1AffineLen]byte)(&p), (*[internal.P1AffineLen]byte)(&q))
+	return p.p.Equal(&q.p)
 }
 
+// Equal reports whether p and q are the same point.
 func (p G2Point) Equal(q G2Point) bool {
-	return internal.P2AffineIsEqual((*[internal.P2AffineLen]byte)(&p), (*[internal.P2AffineLen]byte)(&q))
+	return p.p.Equal(&q.p)
 }
 
+// IsInfinity reports whether p is the point at infinity, the group's
+// identity element.
 func (p G1Point) IsInfinity() bool {
-	return internal.P1AffineIsInf((*[internal.P1AffineLen]byte)(&p))
+	return p.p.IsInfinity()
 }
 
+// IsInfinity reports whether p is the point at infinity.
 func (p G2Point) IsInfinity() bool {
-	return internal.P2AffineIsInf((*[internal.P2AffineLen]byte)(&p))
+	return p.p.IsInfinity()
 }
 
+// Add returns p + q.
 func (p G1Point) Add(q G1Point) G1Point {
-	return internal.P1Add((*[internal.P1AffineLen]byte)(&p), (*[internal.P1AffineLen]byte)(&q))
+	var out G1Point
+	out.p.Add(&p.p, &q.p)
+	return out
 }
 
+// Add returns p + q.
 func (p G2Point) Add(q G2Point) G2Point {
-	return internal.P2Add((*[internal.P2AffineLen]byte)(&p), (*[internal.P2AffineLen]byte)(&q))
+	var out G2Point
+	out.p.Add(&p.p, &q.p)
+	return out
 }
 
+// Double returns p + p.
 func (p G1Point) Double() G1Point {
-	return internal.P1Double((*[internal.P1AffineLen]byte)(&p))
+	var out G1Point
+	out.p.Double(&p.p)
+	return out
 }
 
+// Double returns p + p.
 func (p G2Point) Double() G2Point {
-	return internal.P2Double((*[internal.P2AffineLen]byte)(&p))
+	var out G2Point
+	out.p.Double(&p.p)
+	return out
 }
 
+// Neg returns -p.
 func (p G1Point) Neg() G1Point {
-	return internal.P1Neg((*[internal.P1AffineLen]byte)(&p))
+	var out G1Point
+	out.p.Neg(&p.p)
+	return out
 }
 
+// Neg returns -p.
 func (p G2Point) Neg() G2Point {
-	return internal.P2Neg((*[internal.P2AffineLen]byte)(&p))
+	var out G2Point
+	out.p.Neg(&p.p)
+	return out
 }
 
-// Mul multiplies p by a big-endian 32-byte scalar.
-//
-// blst itself takes a bit width alongside the scalar, so a short scalar
-// can skip its leading zero bits. That argument is not part of this API:
-// with the scalar's width fixed by its type there is nothing left for it
-// to describe, and a width that disagreed with the array would silently
-// multiply by a different value.
+// Mul returns scalar*p, where scalar is a big-endian 32-byte value; it is
+// reduced modulo the group order, which changes no result since a point's
+// order divides r.
 func (p G1Point) Mul(scalar [SeckeyLen]byte) G1Point {
-	return internal.P1Mult((*[internal.P1AffineLen]byte)(&p), scalar[:], scalarBits)
+	var out G1Point
+	out.p.ScalarMultiplication(&p.p, new(big.Int).SetBytes(scalar[:]))
+	return out
 }
 
-// Mul is Mul's mirror in G2.
+// Mul returns scalar*p, where scalar is a big-endian 32-byte value.
 func (p G2Point) Mul(scalar [SeckeyLen]byte) G2Point {
-	return internal.P2Mult((*[internal.P2AffineLen]byte)(&p), scalar[:], scalarBits)
+	var out G2Point
+	out.p.ScalarMultiplication(&p.p, new(big.Int).SetBytes(scalar[:]))
+	return out
 }
 
-// HashToG1 implements RFC 9380 hash-to-curve into G1. dst is the domain
-// separation tag.
-func HashToG1(msg, dst []byte) G1Point {
-	return internal.HashToG1(msg, dst, nil)
+// HashToG1 maps msg to a point in G1 under the domain separation tag dst,
+// using RFC 9380's hash-to-curve with the SVDW map and
+// expand_message_xmd(SHA-256). This is the "random oracle" variant: the
+// output is indifferentiable from a uniformly random point, which is what
+// a signature scheme needs.
+func HashToG1(msg, dst []byte) (G1Point, error) {
+	p, err := bls12381.HashToG1(msg, dst)
+	if err != nil {
+		return G1Point{}, ErrHashToCurveFailed
+	}
+	return G1Point{p: p}, nil
 }
 
-// HashToG2 is HashToG1's mirror into G2.
-func HashToG2(msg, dst []byte) G2Point {
-	return internal.HashToG2(msg, dst, nil)
+// HashToG2 is HashToG1's mirror in G2.
+func HashToG2(msg, dst []byte) (G2Point, error) {
+	p, err := bls12381.HashToG2(msg, dst)
+	if err != nil {
+		return G2Point{}, ErrHashToCurveFailed
+	}
+	return G2Point{p: p}, nil
 }
 
-// Mul multiplies a by b.
-func (a GT) Mul(b GT) GT {
-	return internal.Fp12Mul((*[internal.Fp12Len]byte)(&a), (*[internal.Fp12Len]byte)(&b))
+// EncodeToG1 maps msg to a point in G1 with a single application of the
+// SVDW map, rather than HashToG1's two. It is cheaper but its output is
+// *not* indifferentiable from random — use it only where a construction
+// explicitly calls for encode_to_curve, never as a drop-in for HashToG1.
+func EncodeToG1(msg, dst []byte) (G1Point, error) {
+	p, err := bls12381.EncodeToG1(msg, dst)
+	if err != nil {
+		return G1Point{}, ErrHashToCurveFailed
+	}
+	return G1Point{p: p}, nil
 }
 
-func (a GT) Sqr() GT {
-	return internal.Fp12Sqr((*[internal.Fp12Len]byte)(&a))
+// EncodeToG2 is EncodeToG1's mirror in G2.
+func EncodeToG2(msg, dst []byte) (G2Point, error) {
+	p, err := bls12381.EncodeToG2(msg, dst)
+	if err != nil {
+		return G2Point{}, ErrHashToCurveFailed
+	}
+	return G2Point{p: p}, nil
 }
 
-func (a GT) Inverse() GT {
-	return internal.Fp12Inverse((*[internal.Fp12Len]byte)(&a))
-}
-
-// GTOne returns the target group's identity element.
+// GTOne returns the multiplicative identity of 𝔽p¹².
 func GTOne() GT {
-	return internal.Fp12One()
+	var out GT
+	out.e.SetOne()
+	return out
 }
 
+// Mul returns a*b.
+func (a GT) Mul(b GT) GT {
+	var out GT
+	out.e.Mul(&a.e, &b.e)
+	return out
+}
+
+// Sqr returns a².
+func (a GT) Sqr() GT {
+	var out GT
+	out.e.Square(&a.e)
+	return out
+}
+
+// Inverse returns a⁻¹.
+func (a GT) Inverse() GT {
+	var out GT
+	out.e.Inverse(&a.e)
+	return out
+}
+
+// IsOne reports whether a is the identity.
 func (a GT) IsOne() bool {
-	return internal.Fp12IsOne((*[internal.Fp12Len]byte)(&a))
+	return a.e.IsOne()
 }
 
+// Equal reports whether a and b are the same element.
 func (a GT) Equal(b GT) bool {
-	return internal.Fp12IsEqual((*[internal.Fp12Len]byte)(&a), (*[internal.Fp12Len]byte)(&b))
+	return a.e.Equal(&b.e)
 }
 
-// InGroup reports whether a is in GT, the pairing's target subgroup —
-// meaningful for an Fp12 element that did not come from FinalExp/a Miller
-// loop's own output (which are always in GT by construction).
+// InGroup reports whether a lies in 𝔾ₜ, the order-r subgroup of 𝔽p¹² —
+// not merely in 𝔽p¹². Every pairing output does; an arbitrary 𝔽p¹²
+// element read off the wire may not.
 func (a GT) InGroup() bool {
-	return internal.Fp12InGroup((*[internal.Fp12Len]byte)(&a))
+	return a.e.IsInSubGroup()
 }
 
-// MillerLoop computes the Miller loop of (q, p) — the pairing's first
-// stage, without the final exponentiation.
-func MillerLoop(q G2Point, p G1Point) GT {
-	return internal.MillerLoop((*[internal.P2AffineLen]byte)(&q), (*[internal.P1AffineLen]byte)(&p))
+// Bytes returns a as 12 big-endian 𝔽p coordinates.
+func (a GT) Bytes() [GTLen]byte {
+	return a.e.Bytes()
 }
 
-// MillerLoopN computes the product of len(qs) Miller loops; qs and ps must
-// have the same length.
+// GTFromBytes parses the encoding Bytes produces.
+func GTFromBytes(b []byte) (GT, error) {
+	var out GT
+	if err := out.e.SetBytes(b); err != nil {
+		return GT{}, ErrPairingFailed
+	}
+	return out, nil
+}
+
+// MillerLoop computes the Miller loop f(q, p), *without* the final
+// exponentiation — so its result is not yet a 𝔾ₜ element. Feed it to
+// FinalExp, or accumulate several loops with GT.Mul first and exponentiate
+// once, which is the whole point of keeping the two halves separate.
+func MillerLoop(q G2Point, p G1Point) (GT, error) {
+	f, err := bls12381.MillerLoop([]bls12381.G1Affine{p.p}, []bls12381.G2Affine{q.p})
+	if err != nil {
+		return GT{}, ErrPairingFailed
+	}
+	return GT{e: f}, nil
+}
+
+// MillerLoopN computes ∏ f(qs[i], ps[i]) in one pass, cheaper than
+// multiplying individual MillerLoop results. qs and ps must have the same,
+// non-zero length.
 func MillerLoopN(qs []G2Point, ps []G1Point) (GT, error) {
-	var zero GT
 	if len(qs) != len(ps) {
-		return zero, ErrLengthMismatch
+		return GT{}, ErrLengthMismatch
 	}
-	qbuf := make([]byte, 0, len(qs)*internal.P2AffineLen)
-	pbuf := make([]byte, 0, len(ps)*internal.P1AffineLen)
-	for i := range qs {
-		qbuf = append(qbuf, qs[i][:]...)
-		pbuf = append(pbuf, ps[i][:]...)
+	gps, gqs := unwrapPoints(ps, qs)
+	f, err := bls12381.MillerLoop(gps, gqs)
+	if err != nil {
+		return GT{}, ErrPairingFailed
 	}
-	return internal.MillerLoopN(qbuf, pbuf), nil
+	return GT{e: f}, nil
 }
 
-// FinalExp applies the pairing's final exponentiation to a raw Miller loop
-// result.
+// FinalExp raises f to (p¹²-1)/r, mapping a Miller loop result into 𝔾ₜ.
 func FinalExp(f GT) GT {
-	return internal.FinalExp((*[internal.Fp12Len]byte)(&f))
+	return GT{e: bls12381.FinalExponentiation(&f.e)}
 }
 
-// PrecomputedLines caches the G2-dependent half of a Miller loop for a
-// fixed q, so it can be paired against many p (via MillerLoopLines) without
-// redoing that work each time.
-type PrecomputedLines [internal.LinesLen]byte
-
-// PrecomputeLines computes q's PrecomputedLines.
-func PrecomputeLines(q G2Point) PrecomputedLines {
-	return internal.PrecomputeLines((*[internal.P2AffineLen]byte)(&q))
+// Pair is the full reduced pairing e(p, q): a Miller loop followed by the
+// final exponentiation.
+func Pair(q G2Point, p G1Point) (GT, error) {
+	f, err := bls12381.Pair([]bls12381.G1Affine{p.p}, []bls12381.G2Affine{q.p})
+	if err != nil {
+		return GT{}, ErrPairingFailed
+	}
+	return GT{e: f}, nil
 }
 
-// MillerLoopLines computes the Miller loop of p against lines.
-func MillerLoopLines(lines PrecomputedLines, p G1Point) GT {
-	return internal.MillerLoopLines((*[internal.LinesLen]byte)(&lines), (*[internal.P1AffineLen]byte)(&p))
+// PairN is ∏ e(ps[i], qs[i]) — one Miller loop over all the terms and a
+// single final exponentiation.
+func PairN(qs []G2Point, ps []G1Point) (GT, error) {
+	if len(qs) != len(ps) {
+		return GT{}, ErrLengthMismatch
+	}
+	gps, gqs := unwrapPoints(ps, qs)
+	f, err := bls12381.Pair(gps, gqs)
+	if err != nil {
+		return GT{}, ErrPairingFailed
+	}
+	return GT{e: f}, nil
 }
 
-// FinalVerify compares a and b's final exponentiations without
-// materializing either one — the primitive Pairing.FinalVerify is built
-// on.
+// PairingCheck reports whether ∏ e(ps[i], qs[i]) == 1. This is what a
+// verification equation reduces to once every term is moved to one side,
+// and it is cheaper than PairN followed by IsOne — the check can skip part
+// of the final exponentiation.
+func PairingCheck(qs []G2Point, ps []G1Point) (bool, error) {
+	if len(qs) != len(ps) {
+		return false, ErrLengthMismatch
+	}
+	gps, gqs := unwrapPoints(ps, qs)
+	ok, err := bls12381.PairingCheck(gps, gqs)
+	if err != nil {
+		return false, ErrPairingFailed
+	}
+	return ok, nil
+}
+
+// FinalVerify reports whether a and b pair to the same 𝔾ₜ element, i.e.
+// whether FinalExp(a) == FinalExp(b). Use it to compare two Miller loop
+// results without exponentiating either one yourself.
 func FinalVerify(a, b GT) bool {
-	return internal.Fp12FinalVerify((*[internal.Fp12Len]byte)(&a), (*[internal.Fp12Len]byte)(&b))
+	return FinalExp(a).Equal(FinalExp(b))
 }
 
-// AggregatedInG1 turns an aggregated G1 signature into the GT element
-// Pairing.FinalVerify expects as its gtsig argument.
-func AggregatedInG1(sig G1Point) GT {
-	return internal.AggregatedInG1((*[internal.P1AffineLen]byte)(&sig))
+// PrecomputedLines holds the line evaluations for a fixed G2 point. When
+// the same q is paired against many different G1 points — a verification
+// key against a stream of proofs, say — precomputing its lines once and
+// calling MillerLoopLines is materially faster than a fresh MillerLoop per
+// point.
+type PrecomputedLines struct {
+	lines [2][len(bls12381.LoopCounter) - 1]bls12381.LineEvaluationAff
 }
 
-// AggregatedInG2 is AggregatedInG1's mirror for a G2 signature.
-func AggregatedInG2(sig G2Point) GT {
-	return internal.AggregatedInG2((*[internal.P2AffineLen]byte)(&sig))
+// PrecomputeLines computes the line evaluations for q.
+func PrecomputeLines(q G2Point) PrecomputedLines {
+	return PrecomputedLines{lines: bls12381.PrecomputeLines(q.p)}
 }
 
-// Pairing is a multi-pairing accumulation session: aggregate any number of
-// (public key, signature, message) triples across one or more calls, then
-// check the accumulated product in one FinalVerify. This is what
-// AggregateVerifyMinPk/MinSig are built on; use it directly for a custom
-// pairing equation (e.g. verifying against a gtsig computed separately via
-// AggregatedInG1/AggregatedInG2).
-type Pairing struct {
-	ctx []byte
+// MillerLoopLines is MillerLoop against a precomputed q. Like MillerLoop
+// it stops short of the final exponentiation.
+func MillerLoopLines(lines PrecomputedLines, p G1Point) (GT, error) {
+	f, err := bls12381.MillerLoopFixedQ(
+		[]bls12381.G1Affine{p.p},
+		[][2][len(bls12381.LoopCounter) - 1]bls12381.LineEvaluationAff{lines.lines},
+	)
+	if err != nil {
+		return GT{}, ErrPairingFailed
+	}
+	return GT{e: f}, nil
 }
 
-// NewPairing starts a session. hashOrEncode selects hash-to-curve (true) or
-// encode-to-curve (false) for every aggregate call made against it; dst is
-// the domain separation tag used throughout the session.
-func NewPairing(hashOrEncode bool, dst []byte) *Pairing {
-	ctx := make([]byte, internal.PairingSizeof()+len(dst))
-	internal.PairingInit(ctx, hashOrEncode, dst)
-	return &Pairing{ctx: ctx}
-}
-
-// AggregatePkInG1 aggregates one pk/sig/message triple, for the min-pk
-// scheme (pk in G1, sig in G2). sig is an already-parsed point (e.g. from
-// G2PointFromCompressed) — the internal pairing engine works in affine
-// point form, not the compressed wire encoding Sign* return, so a raw
-// compressed []byte cannot be passed through directly. sig may be nil to
-// aggregate only the pk side, when the caller supplies a gtsig to
-// FinalVerify separately.
-func (p *Pairing) AggregatePkInG1(pk G1Point, sig *G2Point, msg []byte) error {
-	var sigBytes []byte
-	if sig != nil {
-		sigBytes = sig[:]
+// unwrapPoints flattens the wrapper types into the backing slices
+// gnark-crypto's pairing functions take. Callers have already checked that
+// the two have the same length.
+func unwrapPoints(ps []G1Point, qs []G2Point) ([]bls12381.G1Affine, []bls12381.G2Affine) {
+	gps := make([]bls12381.G1Affine, len(ps))
+	gqs := make([]bls12381.G2Affine, len(qs))
+	for i := range ps {
+		gps[i] = ps[i].p
+		gqs[i] = qs[i].p
 	}
-	if internal.PairingAggregatePkInG1(p.ctx, (*[internal.P1AffineLen]byte)(&pk), sigBytes, msg, nil) != internal.ErrSuccess {
-		return ErrPairingFailed
-	}
-	return nil
-}
-
-// AggregatePkInG2 is AggregatePkInG1's mirror for the min-sig scheme.
-func (p *Pairing) AggregatePkInG2(pk G2Point, sig *G1Point, msg []byte) error {
-	var sigBytes []byte
-	if sig != nil {
-		sigBytes = sig[:]
-	}
-	if internal.PairingAggregatePkInG2(p.ctx, (*[internal.P2AffineLen]byte)(&pk), sigBytes, msg, nil) != internal.ErrSuccess {
-		return ErrPairingFailed
-	}
-	return nil
-}
-
-// ChkNAggrPkInG1 is AggregatePkInG1 plus the subgroup checks blst
-// otherwise leaves to the caller — what anything arriving off the wire
-// wants. Since every G1Point/G2Point this package constructs is already
-// subgroup-checked (G1PointFromCompressed/G2PointFromCompressed validate
-// at parse time, and arithmetic on valid points stays valid), pkGrpchk/
-// sigGrpchk exist mainly for parity with the internal/blst API — pass
-// false for either side already known valid to skip redoing that check.
-func (p *Pairing) ChkNAggrPkInG1(pk G1Point, pkGrpchk bool, sig *G2Point, sigGrpchk bool, msg []byte) error {
-	var sigBytes []byte
-	if sig != nil {
-		sigBytes = sig[:]
-	}
-	if internal.PairingChkNAggrPkInG1(p.ctx, (*[internal.P1AffineLen]byte)(&pk), pkGrpchk, sigBytes, sigGrpchk, msg, nil) != internal.ErrSuccess {
-		return ErrPairingFailed
-	}
-	return nil
-}
-
-// ChkNAggrPkInG2 is ChkNAggrPkInG1's mirror for the min-sig scheme.
-func (p *Pairing) ChkNAggrPkInG2(pk G2Point, pkGrpchk bool, sig *G1Point, sigGrpchk bool, msg []byte) error {
-	var sigBytes []byte
-	if sig != nil {
-		sigBytes = sig[:]
-	}
-	if internal.PairingChkNAggrPkInG2(p.ctx, (*[internal.P2AffineLen]byte)(&pk), pkGrpchk, sigBytes, sigGrpchk, msg, nil) != internal.ErrSuccess {
-		return ErrPairingFailed
-	}
-	return nil
-}
-
-// MulNAggregatePkInG1 is AggregatePkInG1 with a per-entry random scalar
-// folded in, which is what makes batch verification sound against an
-// adversary who picked the signatures. scalar is a big-endian 32-byte
-// value.
-func (p *Pairing) MulNAggregatePkInG1(pk G1Point, sig *G2Point, scalar [SeckeyLen]byte, msg []byte) error {
-	var sigBytes []byte
-	if sig != nil {
-		sigBytes = sig[:]
-	}
-	if internal.PairingMulNAggregatePkInG1(p.ctx, (*[internal.P1AffineLen]byte)(&pk), sigBytes, scalar[:], scalarBits, msg, nil) != internal.ErrSuccess {
-		return ErrPairingFailed
-	}
-	return nil
-}
-
-// MulNAggregatePkInG2 is MulNAggregatePkInG1's mirror for the min-sig
-// scheme.
-func (p *Pairing) MulNAggregatePkInG2(pk G2Point, sig *G1Point, scalar [SeckeyLen]byte, msg []byte) error {
-	var sigBytes []byte
-	if sig != nil {
-		sigBytes = sig[:]
-	}
-	if internal.PairingMulNAggregatePkInG2(p.ctx, (*[internal.P2AffineLen]byte)(&pk), sigBytes, scalar[:], scalarBits, msg, nil) != internal.ErrSuccess {
-		return ErrPairingFailed
-	}
-	return nil
-}
-
-// ChkNMulNAggrPkInG1 combines ChkNAggrPkInG1's subgroup checks with
-// MulNAggregatePkInG1's random-scalar batching — the form to use for
-// batch-verifying signatures straight off the wire.
-func (p *Pairing) ChkNMulNAggrPkInG1(pk G1Point, pkGrpchk bool, sig *G2Point, sigGrpchk bool, scalar [SeckeyLen]byte, msg []byte) error {
-	var sigBytes []byte
-	if sig != nil {
-		sigBytes = sig[:]
-	}
-	if internal.PairingChkNMulNAggrPkInG1(p.ctx, (*[internal.P1AffineLen]byte)(&pk), pkGrpchk, sigBytes, sigGrpchk, scalar[:], scalarBits, msg, nil) != internal.ErrSuccess {
-		return ErrPairingFailed
-	}
-	return nil
-}
-
-// ChkNMulNAggrPkInG2 is ChkNMulNAggrPkInG1's mirror for the min-sig scheme.
-func (p *Pairing) ChkNMulNAggrPkInG2(pk G2Point, pkGrpchk bool, sig *G1Point, sigGrpchk bool, scalar [SeckeyLen]byte, msg []byte) error {
-	var sigBytes []byte
-	if sig != nil {
-		sigBytes = sig[:]
-	}
-	if internal.PairingChkNMulNAggrPkInG2(p.ctx, (*[internal.P2AffineLen]byte)(&pk), pkGrpchk, sigBytes, sigGrpchk, scalar[:], scalarBits, msg, nil) != internal.ErrSuccess {
-		return ErrPairingFailed
-	}
-	return nil
-}
-
-// Commit finalizes p's accumulated Miller loop products, required before
-// FinalVerify or Merge.
-func (p *Pairing) Commit() {
-	internal.PairingCommit(p.ctx)
-}
-
-// Merge folds other (already Commit-ed) into p.
-func (p *Pairing) Merge(other *Pairing) error {
-	if internal.PairingMerge(p.ctx, other.ctx) != internal.ErrSuccess {
-		return ErrPairingFailed
-	}
-	return nil
-}
-
-// FinalVerify checks p's accumulated pairing. gtsig is the GT-element form
-// of a signature aggregated separately (see AggregatedInG1/AggregatedInG2);
-// pass nil when every signature was folded into p by the aggregate calls
-// instead.
-func (p *Pairing) FinalVerify(gtsig *GT) bool {
-	return internal.PairingFinalVerify(p.ctx, (*[internal.Fp12Len]byte)(gtsig))
+	return gps, gqs
 }
