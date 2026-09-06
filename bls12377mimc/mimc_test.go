@@ -1,11 +1,11 @@
-package bn254mimc
+package bls12377mimc
 
 import (
 	"encoding/hex"
 	"math/big"
 	"testing"
 
-	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
+	"github.com/consensys/gnark-crypto/ecc/bls12-377/fr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,8 +25,8 @@ import (
 // they cannot do is tell us the construction is correct. The structural
 // tests further down are what carry weight.
 const (
-	recordedHashOfOne    = "27e5458b666ef581475a9acddbc3524ca252185cae3936506e65cda9c358222b"
-	recordedHashOfOneTwo = "07f751d627280b8f73ebe288d68acd77dc2fd6962debda017df192e355065814"
+	recordedHashOfOne    = "0d962bab9f4e4213383f25abc12d6ee78855fff118c94ca4352032b802ef8b87"
+	recordedHashOfOneTwo = "03262656cb93fd9b771a04158e83ae3d1592084175982ee9e3bc28694c359830"
 )
 
 // el returns n as one canonical big-endian field element.
