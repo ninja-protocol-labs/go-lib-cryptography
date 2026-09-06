@@ -3,9 +3,9 @@
 //
 // # Layout
 //
-// Every package is directly under the module root. There are no
-// subpackages and no internal packages, so an import path is the module
-// path plus one name, and that name says what the package is:
+// Every package is directly under the module root. There is no nested
+// package hierarchy and no internal package, so an import path is the
+// module path plus one name, and that name says what the package is:
 //
 //	Keys and signatures
 //	    secp256k1  secp256r1  ed25519  ed448  x25519  sr25519

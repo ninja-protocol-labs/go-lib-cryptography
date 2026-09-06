@@ -8,8 +8,8 @@
 Cryptographic primitives in pure Go: elliptic curves and signatures, byte and
 field hashes, password KDFs, and the text encodings that go with them.
 
-No cgo, no subpackages, no interfaces to learn — every package sits directly
-under the module root and they all have the same shape.
+No cgo, no nested package hierarchy, no interfaces to learn — every package
+sits directly under the module root and they all have the same shape.
 
 ```
 go get github.com/ninja-protocol-labs/go-lib-cryptography
