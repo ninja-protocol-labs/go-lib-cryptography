@@ -1,7 +1,7 @@
-package bn254poseidon2
+package bls12377poseidon2
 
 import (
-	"github.com/consensys/gnark-crypto/ecc/bn254/fr/poseidon2"
+	"github.com/consensys/gnark-crypto/ecc/bls12-377/fr/poseidon2"
 	gnarkhash "github.com/consensys/gnark-crypto/hash"
 )
 
@@ -80,7 +80,7 @@ func (h *Hasher) Write(elems ...[]byte) error {
 // Sum returns the digest of everything written so far, and reports
 // ErrNoInput if that is nothing.
 //
-// Unlike bn254mimc's, this Sum is a pure read: it does not advance the
+// Unlike bls12377mimc's, this Sum is a pure read: it does not advance the
 // hash, so writing more afterwards continues from where the last Write
 // left off and Sum can be called as often as you like.
 func (h *Hasher) Sum() (*Digest, error) {

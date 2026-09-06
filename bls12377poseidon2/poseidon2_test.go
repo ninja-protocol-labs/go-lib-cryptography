@@ -1,11 +1,11 @@
-package bn254mimc
+package bls12377poseidon2
 
 import (
 	"encoding/hex"
 	"math/big"
 	"testing"
 
-	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
+	"github.com/consensys/gnark-crypto/ecc/bls12-377/fr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,8 +25,9 @@ import (
 // they cannot do is tell us the construction is correct. The structural
 // tests further down are what carry weight.
 const (
-	recordedHashOfOne    = "27e5458b666ef581475a9acddbc3524ca252185cae3936506e65cda9c358222b"
-	recordedHashOfOneTwo = "07f751d627280b8f73ebe288d68acd77dc2fd6962debda017df192e355065814"
+	recordedHashOfOne      = "0a1b78ae31a310eeab4ec5f6f2ac41ca17fb3c0ccd14f707e627b1dcd8f81162"
+	recordedHashOfOneTwo   = "01e4f822b85d189c727e5e59d4de90e02bdab9fc101b61d0069af1a7aa729aa4"
+	recordedCompressOneTwo = "0647a936d0a907e32c87d174f887c3aabf4c43f117318bf464c28070d1592967"
 )
 
 // el returns n as one canonical big-endian field element.
@@ -256,24 +257,35 @@ func TestConstants(t *testing.T) {
 	assert.Equal(t, ElementLen, BlockSize)
 }
 
-// Compress exists for Merkle trees and is documented as exactly Hash of
-// two. If it ever stops being so, every tree built on it changes shape.
-func TestCompressIsHashOfTwo(t *testing.T) {
-	left, right := el(t, 7), el(t, 11)
+// Compress is one permutation call; Hash of the same two elements is
+// Compress(Compress(IV, a), b). Conflating them silently produces a
+// Merkle tree no verifier agrees with.
+func TestCompressIsNotHashOfTwo(t *testing.T) {
+	left, right := el(t, 1), el(t, 2)
 
 	got, err := Compress(left, right)
 	require.NoError(t, err)
-	assert.True(t, got.Equal(hash(t, left, right)))
 
-	// And it is not symmetric — a Merkle tree depends on that.
-	other, err := Compress(right, left)
-	require.NoError(t, err)
-	assert.False(t, got.Equal(other), "Compress(a, b) == Compress(b, a)")
+	assert.Equal(t, recordedCompressOneTwo, got.String())
+	assert.False(t, got.Equal(hash(t, left, right)),
+		"Compress and Hash agreed; they are different functions")
 }
 
-// Sum advances this hash rather than reading it, so a second Sum after
-// more input is the digest of everything written so far.
-func TestSumContinuesTheHash(t *testing.T) {
+// A Merkle tree depends on the two children not being interchangeable.
+func TestCompressIsNotSymmetric(t *testing.T) {
+	left, right := el(t, 7), el(t, 11)
+
+	a, err := Compress(left, right)
+	require.NoError(t, err)
+	b, err := Compress(right, left)
+	require.NoError(t, err)
+
+	assert.False(t, a.Equal(b), "Compress(a, b) == Compress(b, a)")
+}
+
+// Sum reads this hash without advancing it, so it can be called as often
+// as you like and writing more continues from the last Write.
+func TestSumIsAPureRead(t *testing.T) {
 	one, two := el(t, 1), el(t, 2)
 
 	h := New()
@@ -281,10 +293,12 @@ func TestSumContinuesTheHash(t *testing.T) {
 
 	first, err := h.Sum()
 	require.NoError(t, err)
-	assert.True(t, first.Equal(hash(t, one)))
+	again, err := h.Sum()
+	require.NoError(t, err)
+	assert.True(t, first.Equal(again), "Sum advanced the hash")
 
 	require.NoError(t, h.Write(two))
 	second, err := h.Sum()
 	require.NoError(t, err)
-	assert.False(t, second.Equal(first))
+	assert.True(t, second.Equal(hash(t, one, two)))
 }

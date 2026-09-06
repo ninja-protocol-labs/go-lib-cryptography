@@ -1,8 +1,8 @@
-package bn254mimc
+package bls12377mimc
 
 import (
-	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
-	"github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc"
+	"github.com/consensys/gnark-crypto/ecc/bls12-377/fr"
+	"github.com/consensys/gnark-crypto/ecc/bls12-377/fr/mimc"
 )
 
 // Hash returns the MiMC digest of elems, each one canonical big-endian
