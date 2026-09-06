@@ -7,6 +7,9 @@ import (
 	ed "github.com/cloudflare/circl/sign/ed448"
 )
 
+// PrivateKey is a 57-byte seed seed, with the public key it derives to and the
+// expanded form the signing functions take both computed once at
+// construction.
 type PrivateKey struct {
 	key [SeckeyLen]byte
 	pub [PubkeyLen]byte
@@ -16,6 +19,7 @@ type PrivateKey struct {
 	exp [ExpandedLen]byte
 }
 
+// GeneratePrivateKey returns a new key from crypto/rand.
 func GeneratePrivateKey() (*PrivateKey, error) {
 	var (
 		seed [SeckeyLen]byte
@@ -38,6 +42,8 @@ func GeneratePrivateKey() (*PrivateKey, error) {
 	}, nil
 }
 
+// PrivateKeyFromBytes expands a seed into a key, deriving the public key
+// and the signing form once.
 func PrivateKeyFromBytes(b []byte) (*PrivateKey, error) {
 	var (
 		seed [SeckeyLen]byte
@@ -60,16 +66,22 @@ func PrivateKeyFromBytes(b []byte) (*PrivateKey, error) {
 	}, nil
 }
 
+// Bytes returns the seed, as a copy — not the expanded form. It is
+// secret: do not log it, and clear it when done.
 func (k *PrivateKey) Bytes() [SeckeyLen]byte {
 	return k.key
 }
 
+// PublicKey returns the key this seed derives to. It was computed at
+// construction, so this is a field read.
 func (k *PrivateKey) PublicKey() *PublicKey {
 	return &PublicKey{
 		key: k.pub,
 	}
 }
 
+// Equal reports whether o holds the same seed. It is nil-safe, and
+// constant-time because the value is secret.
 func (k *PrivateKey) Equal(o *PrivateKey) bool {
 	if o == nil {
 		return false
@@ -77,6 +89,7 @@ func (k *PrivateKey) Equal(o *PrivateKey) bool {
 	return subtle.ConstantTimeCompare(k.key[:], o.key[:]) == 1
 }
 
+// IsZero catches a `var k PrivateKey`; no constructor returns one.
 func (k *PrivateKey) IsZero() bool {
 	return k == nil || *k == PrivateKey{}
 }

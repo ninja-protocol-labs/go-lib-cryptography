@@ -26,10 +26,14 @@ func DigestFromBytes(b []byte) (*Digest, error) {
 	}, nil
 }
 
+// Bytes returns the digest, as a copy. It is one canonical field
+// element, so it can be fed straight back into Hash or Compress.
 func (d *Digest) Bytes() [Size]byte {
 	return d.b
 }
 
+// Equal reports whether o is the same digest. It is nil-safe, and not
+// constant-time — a digest is public.
 func (d *Digest) Equal(o *Digest) bool {
 	if o == nil {
 		return false
@@ -42,6 +46,7 @@ func (d *Digest) IsZero() bool {
 	return d == nil || *d == Digest{}
 }
 
+// String returns the digest as lowercase hex.
 func (d *Digest) String() string {
 	return encoding.Hex.Encode(d.b[:])
 }

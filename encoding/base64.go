@@ -17,18 +17,21 @@ import stdbase64 "encoding/base64"
 //	Base64Raw     +/  unpadded
 //	Base64RawURL  -_  unpadded          What JWTs use.
 var (
-	Base64       = base64Codec{stdbase64.StdEncoding}
-	Base64URL    = base64Codec{stdbase64.URLEncoding}
-	Base64Raw    = base64Codec{stdbase64.RawStdEncoding}
-	Base64RawURL = base64Codec{stdbase64.RawURLEncoding}
+	Base64       = Base64Codec{stdbase64.StdEncoding}
+	Base64URL    = Base64Codec{stdbase64.URLEncoding}
+	Base64Raw    = Base64Codec{stdbase64.RawStdEncoding}
+	Base64RawURL = Base64Codec{stdbase64.RawURLEncoding}
 )
 
-type base64Codec struct {
+// Base64Codec encodes and decodes base64. The four package-level
+// variables are the RFC 4648 variants; which one applies is fixed by
+// whatever is on the other side.
+type Base64Codec struct {
 	enc *stdbase64.Encoding
 }
 
 // Encode returns b in this variant's base64.
-func (c base64Codec) Encode(b []byte) string {
+func (c Base64Codec) Encode(b []byte) string {
 	return c.enc.EncodeToString(b)
 }
 
@@ -38,7 +41,7 @@ func (c base64Codec) Encode(b []byte) string {
 // Every failure reports ErrMalformed. The standard library returns one
 // error type for a character outside the alphabet and for bad padding
 // alike, so there is nothing finer to pass on.
-func (c base64Codec) Decode(s string) ([]byte, error) {
+func (c Base64Codec) Decode(s string) ([]byte, error) {
 	b, err := c.enc.DecodeString(s)
 	if err != nil {
 		return nil, ErrMalformed
@@ -47,7 +50,7 @@ func (c base64Codec) Decode(s string) ([]byte, error) {
 }
 
 // DecodeInto parses s into dst, which must be exactly the decoded length.
-func (c base64Codec) DecodeInto(dst []byte, s string) error {
+func (c Base64Codec) DecodeInto(dst []byte, s string) error {
 	b, err := c.Decode(s)
 	return decodeInto(dst, b, err)
 }

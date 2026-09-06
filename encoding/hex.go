@@ -11,7 +11,9 @@ import (
 // protocol.
 const Prefix = "0x"
 
-type hexCodec struct{}
+// HexCodec encodes and decodes hexadecimal. Hex is the instance; there is
+// no reason to construct another.
+type HexCodec struct{}
 
 // Hex encodes and decodes hexadecimal.
 //
@@ -19,15 +21,15 @@ type hexCodec struct{}
 // Decode accepts either case, mixed case, and an optional "0x" — the
 // normalisation that keeps a caller from having to guess what shape a
 // string arrived in.
-var Hex hexCodec
+var Hex HexCodec
 
 // Encode returns b as lowercase hex, with no prefix.
-func (hexCodec) Encode(b []byte) string {
+func (HexCodec) Encode(b []byte) string {
 	return stdhex.EncodeToString(b)
 }
 
 // EncodePrefixed returns b as lowercase hex with a leading "0x".
-func (hexCodec) EncodePrefixed(b []byte) string {
+func (HexCodec) EncodePrefixed(b []byte) string {
 	return Prefix + stdhex.EncodeToString(b)
 }
 
@@ -37,7 +39,7 @@ func (hexCodec) EncodePrefixed(b []byte) string {
 // An odd number of digits is malformed: hex encodes whole bytes, and
 // guessing whether the caller meant to pad the front or the back would be
 // guessing at their data.
-func (hexCodec) Decode(s string) ([]byte, error) {
+func (HexCodec) Decode(s string) ([]byte, error) {
 	s = strings.TrimPrefix(s, Prefix)
 	s = strings.TrimPrefix(s, "0X")
 	if len(s)%2 != 0 {
@@ -52,7 +54,7 @@ func (hexCodec) Decode(s string) ([]byte, error) {
 
 // DecodeInto parses s into dst, which must be exactly the decoded length.
 // See the package doc on why this is the fixed-length form.
-func (c hexCodec) DecodeInto(dst []byte, s string) error {
+func (c HexCodec) DecodeInto(dst []byte, s string) error {
 	b, err := c.Decode(s)
 	return decodeInto(dst, b, err)
 }

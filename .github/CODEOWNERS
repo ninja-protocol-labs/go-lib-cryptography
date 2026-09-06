@@ -1,0 +1,8 @@
+# GitHub requests a review from these owners on every pull request that
+# touches a matching path. It blocks the merge only where the branch
+# protection rule has "Require review from Code Owners" turned on.
+#
+# An owner must have write access to the repository, or GitHub flags the
+# line and ignores it.
+
+* @andantan

@@ -13,14 +13,21 @@ import (
 // randomness), so an output from here cross-verifies only against this
 // package, not against a chain's own VRF.
 
+// VRFOutput is the VRF's output point: the value a caller derives
+// randomness from. It is deterministic in the key and the transcript, so
+// the same signer over the same input always produces it.
 type VRFOutput struct {
 	out [VRFOutputLen]byte
 }
 
+// VRFProof is what convinces a verifier that a VRFOutput really is the
+// one this key produces for that input. Without it an output is just 32
+// bytes anyone could have chosen.
 type VRFProof struct {
 	proof [VRFProofLen]byte
 }
 
+// VRFOutputFromBytes parses a VRF output point.
 func VRFOutputFromBytes(b []byte) (*VRFOutput, error) {
 	var enc [VRFOutputLen]byte
 
@@ -38,6 +45,7 @@ func VRFOutputFromBytes(b []byte) (*VRFOutput, error) {
 	}, nil
 }
 
+// VRFProofFromBytes parses a VRF proof.
 func VRFProofFromBytes(b []byte) (*VRFProof, error) {
 	var (
 		enc [VRFProofLen]byte
@@ -58,10 +66,12 @@ func VRFProofFromBytes(b []byte) (*VRFProof, error) {
 	}, nil
 }
 
+// Bytes returns the output point, as a copy.
 func (o *VRFOutput) Bytes() [VRFOutputLen]byte {
 	return o.out
 }
 
+// Equal reports whether x is the same output. It is nil-safe.
 func (o *VRFOutput) Equal(x *VRFOutput) bool {
 	if x == nil {
 		return false
@@ -69,18 +79,22 @@ func (o *VRFOutput) Equal(x *VRFOutput) bool {
 	return o.out == x.out
 }
 
+// IsZero catches a `var o VRFOutput`; no constructor returns one.
 func (o *VRFOutput) IsZero() bool {
 	return o == nil || *o == VRFOutput{}
 }
 
+// String returns the output as lowercase hex.
 func (o *VRFOutput) String() string {
 	return encoding.Hex.Encode(o.out[:])
 }
 
+// Bytes returns the proof, as a copy.
 func (p *VRFProof) Bytes() [VRFProofLen]byte {
 	return p.proof
 }
 
+// Equal reports whether x is the same proof. It is nil-safe.
 func (p *VRFProof) Equal(x *VRFProof) bool {
 	if x == nil {
 		return false
@@ -88,10 +102,12 @@ func (p *VRFProof) Equal(x *VRFProof) bool {
 	return p.proof == x.proof
 }
 
+// IsZero catches a `var p VRFProof`; no constructor returns one.
 func (p *VRFProof) IsZero() bool {
 	return p == nil || *p == VRFProof{}
 }
 
+// String returns the proof as lowercase hex.
 func (p *VRFProof) String() string {
 	return encoding.Hex.Encode(p.proof[:])
 }

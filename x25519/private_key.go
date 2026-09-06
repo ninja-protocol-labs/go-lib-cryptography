@@ -9,11 +9,18 @@ import (
 
 func curve() ecdh.Curve { return ecdh.X25519() }
 
+// PrivateKey is an X25519 scalar, stored clamped, with the public key it
+// derives to computed once at construction.
+//
+// Clamping is why Bytes may not return what PrivateKeyFromBytes was given:
+// RFC 7748 fixes three bits low and one high, and two inputs differing only
+// in those bits are the same key.
 type PrivateKey struct {
 	key [SeckeyLen]byte
 	pub [PubkeyLen]byte
 }
 
+// GeneratePrivateKey returns a new key from crypto/rand.
 func GeneratePrivateKey() (*PrivateKey, error) {
 	var (
 		key [SeckeyLen]byte
@@ -33,6 +40,7 @@ func GeneratePrivateKey() (*PrivateKey, error) {
 	}, nil
 }
 
+// PrivateKeyFromBytes clamps a 32-byte scalar and derives its public key.
 func PrivateKeyFromBytes(b []byte) (*PrivateKey, error) {
 	var (
 		key [SeckeyLen]byte
@@ -52,16 +60,22 @@ func PrivateKeyFromBytes(b []byte) (*PrivateKey, error) {
 	}, nil
 }
 
+// Bytes returns the clamped scalar, as a copy. It is secret: do not log
+// it, and clear it when done.
 func (k *PrivateKey) Bytes() [SeckeyLen]byte {
 	return k.key
 }
 
+// PublicKey returns the point this scalar derives to. It was computed at
+// construction, so this is a field read.
 func (k *PrivateKey) PublicKey() *PublicKey {
 	return &PublicKey{
 		key: k.pub,
 	}
 }
 
+// Equal reports whether o holds the same clamped scalar. It is nil-safe,
+// and constant-time because the value is secret.
 func (k *PrivateKey) Equal(o *PrivateKey) bool {
 	if o == nil {
 		return false
@@ -69,6 +83,7 @@ func (k *PrivateKey) Equal(o *PrivateKey) bool {
 	return subtle.ConstantTimeCompare(k.key[:], o.key[:]) == 1
 }
 
+// IsZero catches a `var k PrivateKey`; no constructor returns one.
 func (k *PrivateKey) IsZero() bool {
 	return k == nil || *k == PrivateKey{}
 }

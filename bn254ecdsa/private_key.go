@@ -13,6 +13,9 @@ import (
 // order is r, the order of the group a scalar lives in.
 var order = fr.Modulus()
 
+// PrivateKey is a scalar modulo r, BN254's group order, with the public
+// key it derives to computed once at construction rather than on every
+// use.
 type PrivateKey struct {
 	key [SeckeyLen]byte
 	pub [PubkeyLen]byte
@@ -35,6 +38,7 @@ func newPrivateKey(key [SeckeyLen]byte) (*PrivateKey, error) {
 	}, nil
 }
 
+// GeneratePrivateKey returns a new key from crypto/rand.
 func GeneratePrivateKey() (*PrivateKey, error) {
 	var key [SeckeyLen]byte
 
@@ -64,16 +68,23 @@ func PrivateKeyFromBytes(b []byte) (*PrivateKey, error) {
 	return newPrivateKey(key)
 }
 
+// Bytes returns the scalar big-endian, as a copy. It is secret: do not
+// log it, and clear it when done.
 func (k *PrivateKey) Bytes() [SeckeyLen]byte {
 	return k.key
 }
 
+// PublicKey returns the G1 point this scalar derives to. It was computed
+// at construction, so this is a field read rather than a scalar
+// multiplication.
 func (k *PrivateKey) PublicKey() *PublicKey {
 	return &PublicKey{
 		key: k.pub,
 	}
 }
 
+// Equal reports whether o holds the same scalar. It is nil-safe, and
+// constant-time because the value is secret.
 func (k *PrivateKey) Equal(o *PrivateKey) bool {
 	if o == nil {
 		return false
@@ -81,6 +92,8 @@ func (k *PrivateKey) Equal(o *PrivateKey) bool {
 	return subtle.ConstantTimeCompare(k.key[:], o.key[:]) == 1
 }
 
+// IsZero catches a `var k PrivateKey`; no constructor returns one, since
+// zero is not a valid scalar.
 func (k *PrivateKey) IsZero() bool {
 	return k == nil || *k == PrivateKey{}
 }

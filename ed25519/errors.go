@@ -11,6 +11,8 @@ var (
 	// ErrInvalidPublicKey is a length check only — see the package doc.
 	ErrInvalidPublicKey = errors.New("ed25519: invalid public key")
 
+	// ErrInvalidSignature means the bytes are not SignatureLen long.
+	// What they encode is checked by Verify, not here.
 	ErrInvalidSignature = errors.New("ed25519: invalid signature")
 
 	// ErrSigningFailed means an Ed25519ctx or Ed25519ph signature could

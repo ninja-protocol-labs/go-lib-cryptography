@@ -5,6 +5,8 @@ import (
 	"github.com/ninja-protocol-labs/go-lib-cryptography/encoding"
 )
 
+// PublicKey is a point on secp256k1, stored compressed whichever encoding
+// it was parsed from.
 type PublicKey struct {
 	key [PubkeyCompressedLen]byte
 }
@@ -29,10 +31,17 @@ func PublicKeyFromBytes(b []byte) (*PublicKey, error) {
 	}, nil
 }
 
+// Bytes returns the compressed SEC 1 encoding — a parity byte and X — as
+// a copy. This is the form the key is stored in, so it round-trips
+// through PublicKeyFromBytes unchanged.
 func (k *PublicKey) Bytes() [PubkeyCompressedLen]byte {
 	return k.key
 }
 
+// BytesUncompressed returns the uncompressed SEC 1 encoding: 0x04, X, Y.
+// Ethereum hashes the 64 bytes after that prefix to derive an address.
+//
+// Unlike Bytes this recomputes Y from the stored point on every call.
 func (k *PublicKey) BytesUncompressed() [PubkeyUncompressedLen]byte {
 	var b [PubkeyUncompressedLen]byte
 
@@ -40,6 +49,9 @@ func (k *PublicKey) BytesUncompressed() [PubkeyUncompressedLen]byte {
 	return b
 }
 
+// Equal reports whether o is the same point. It is nil-safe, and compares
+// the compressed form, so two keys parsed from different encodings of the
+// same point are equal.
 func (k *PublicKey) Equal(o *PublicKey) bool {
 	if o == nil {
 		return false
@@ -52,6 +64,7 @@ func (k *PublicKey) IsZero() bool {
 	return k == nil || *k == PublicKey{}
 }
 
+// String returns the compressed encoding as lowercase hex.
 func (k *PublicKey) String() string {
 	return encoding.Hex.Encode(k.key[:])
 }

@@ -8,10 +8,14 @@ import (
 // A signature lives in whichever group the scheme did not give the public
 // key: G2 under min-pk, G1 under min-sig.
 
+// SignatureMinPk is a point in G2, the larger group min-pk leaves for
+// signatures.
 type SignatureMinPk struct {
 	sig [SignatureMinPkLen]byte
 }
 
+// SignatureMinSig is a point in G1 — half the size, which is what min-sig
+// exists for.
 type SignatureMinSig struct {
 	sig [SignatureMinSigLen]byte
 }
@@ -34,6 +38,8 @@ func SignatureMinPkFromBytes(b []byte) (*SignatureMinPk, error) {
 	}, nil
 }
 
+// SignatureMinSigFromBytes is SignatureMinPkFromBytes for the min-sig
+// scheme, over a compressed G1 point.
 func SignatureMinSigFromBytes(b []byte) (*SignatureMinSig, error) {
 	var p bls12377.G1Affine
 
@@ -49,14 +55,18 @@ func SignatureMinSigFromBytes(b []byte) (*SignatureMinSig, error) {
 	}, nil
 }
 
+// Bytes returns the compressed G2 encoding, as a copy.
 func (s *SignatureMinPk) Bytes() [SignatureMinPkLen]byte {
 	return s.sig
 }
 
+// Bytes returns the compressed G1 encoding, as a copy.
 func (s *SignatureMinSig) Bytes() [SignatureMinSigLen]byte {
 	return s.sig
 }
 
+// Equal reports whether o is the same point. It is nil-safe, and not
+// constant-time — a signature is public.
 func (s *SignatureMinPk) Equal(o *SignatureMinPk) bool {
 	if o == nil {
 		return false
@@ -64,6 +74,8 @@ func (s *SignatureMinPk) Equal(o *SignatureMinPk) bool {
 	return s.sig == o.sig
 }
 
+// Equal reports whether o is the same point. It is nil-safe, and not
+// constant-time — a signature is public.
 func (s *SignatureMinSig) Equal(o *SignatureMinSig) bool {
 	if o == nil {
 		return false
@@ -76,14 +88,17 @@ func (s *SignatureMinPk) IsZero() bool {
 	return s == nil || *s == SignatureMinPk{}
 }
 
+// IsZero catches a `var s SignatureMinSig`; no constructor returns one.
 func (s *SignatureMinSig) IsZero() bool {
 	return s == nil || *s == SignatureMinSig{}
 }
 
+// String returns the compressed encoding as lowercase hex.
 func (s *SignatureMinPk) String() string {
 	return encoding.Hex.Encode(s.sig[:])
 }
 
+// String returns the compressed encoding as lowercase hex.
 func (s *SignatureMinSig) String() string {
 	return encoding.Hex.Encode(s.sig[:])
 }

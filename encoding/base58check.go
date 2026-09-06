@@ -23,9 +23,11 @@ import "crypto/sha256"
 // that dropped base58 for bech32 while keeping compatibility with older
 // base58 ones. A string round-tripping here is evidence about this
 // construction and nothing else.
-var Base58Check = base58CheckCodec{}
+var Base58Check = Base58CheckCodec{}
 
-type base58CheckCodec struct{}
+// Base58CheckCodec is base58 with a four-byte checksum. Base58Check is
+// the instance.
+type Base58CheckCodec struct{}
 
 // checksum returns the first ChecksumLen bytes of SHA-256(SHA-256(b)).
 //
@@ -42,7 +44,7 @@ func checksum(b []byte) [ChecksumLen]byte {
 //
 // payload is whatever should be covered by the checksum, version bytes
 // included — see the note on Base58Check.
-func (base58CheckCodec) Encode(payload []byte) string {
+func (Base58CheckCodec) Encode(payload []byte) string {
 	sum := checksum(payload)
 	full := make([]byte, 0, len(payload)+ChecksumLen)
 	full = append(full, payload...)
@@ -61,7 +63,7 @@ func (base58CheckCodec) Encode(payload []byte) string {
 // The comparison is not constant-time, deliberately: the checksum is an
 // integrity check over public data, and there is nothing secret in it to
 // leak.
-func (base58CheckCodec) Decode(s string) ([]byte, error) {
+func (Base58CheckCodec) Decode(s string) ([]byte, error) {
 	full, err := Base58.Decode(s)
 	if err != nil {
 		return nil, err
@@ -79,7 +81,7 @@ func (base58CheckCodec) Decode(s string) ([]byte, error) {
 
 // DecodeInto parses s into dst, which must be exactly the payload length
 // once the checksum is stripped.
-func (base58CheckCodec) DecodeInto(dst []byte, s string) error {
+func (Base58CheckCodec) DecodeInto(dst []byte, s string) error {
 	b, err := Base58Check.Decode(s)
 	return decodeInto(dst, b, err)
 }

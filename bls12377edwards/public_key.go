@@ -7,6 +7,9 @@ import (
 	"github.com/ninja-protocol-labs/go-lib-cryptography/encoding"
 )
 
+// PublicKey is a point on BLS12-377's companion curve, stored in the compressed encoding it
+// was parsed from. Non-canonical encodings are rejected, so the stored
+// bytes and the point identify each other.
 type PublicKey struct {
 	key [PubkeyLen]byte
 }
@@ -49,10 +52,12 @@ func PublicKeyFromBytes(b []byte) (*PublicKey, error) {
 	}, nil
 }
 
+// Bytes returns the compressed encoding, as a copy.
 func (k *PublicKey) Bytes() [PubkeyLen]byte {
 	return k.key
 }
 
+// Equal reports whether o is the same point. It is nil-safe.
 func (k *PublicKey) Equal(o *PublicKey) bool {
 	if o == nil {
 		return false
@@ -65,6 +70,7 @@ func (k *PublicKey) IsZero() bool {
 	return k == nil || *k == PublicKey{}
 }
 
+// String returns the compressed encoding as lowercase hex.
 func (k *PublicKey) String() string {
 	return encoding.Hex.Encode(k.key[:])
 }

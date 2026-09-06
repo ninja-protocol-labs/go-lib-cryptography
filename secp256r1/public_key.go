@@ -8,6 +8,8 @@ import (
 	"github.com/ninja-protocol-labs/go-lib-cryptography/encoding"
 )
 
+// PublicKey is a point on P-256, stored in both SEC 1 encodings whichever
+// one it was parsed from.
 type PublicKey struct {
 	key [PubkeyCompressedLen]byte
 
@@ -49,14 +51,21 @@ func PublicKeyFromBytes(b []byte) (*PublicKey, error) {
 	}, nil
 }
 
+// Bytes returns the compressed SEC 1 encoding — a parity byte and X — as
+// a copy.
 func (k *PublicKey) Bytes() [PubkeyCompressedLen]byte {
 	return k.key
 }
 
+// BytesUncompressed returns the uncompressed SEC 1 encoding: 0x04, X, Y.
+// This is the form crypto/ecdsa parses, so it is stored rather than
+// recomputed.
 func (k *PublicKey) BytesUncompressed() [PubkeyUncompressedLen]byte {
 	return k.unc
 }
 
+// Equal reports whether o is the same point. It is nil-safe, so two keys
+// parsed from different encodings of one point are equal.
 func (k *PublicKey) Equal(o *PublicKey) bool {
 	if o == nil {
 		return false
@@ -64,10 +73,12 @@ func (k *PublicKey) Equal(o *PublicKey) bool {
 	return k.key == o.key
 }
 
+// IsZero catches a `var k PublicKey`; no constructor returns one.
 func (k *PublicKey) IsZero() bool {
 	return k == nil || *k == PublicKey{}
 }
 
+// String returns the compressed encoding as lowercase hex.
 func (k *PublicKey) String() string {
 	return encoding.Hex.Encode(k.key[:])
 }

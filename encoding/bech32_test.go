@@ -56,7 +56,7 @@ func TestBech32AndBech32mRejectEachOther(t *testing.T) {
 func TestBech32RoundTrip(t *testing.T) {
 	for _, c := range []struct {
 		name string
-		enc  bech32Codec
+		enc  Bech32Codec
 	}{{"bech32", Bech32}, {"bech32m", Bech32m}} {
 		t.Run(c.name, func(t *testing.T) {
 			for _, payload := range [][]byte{

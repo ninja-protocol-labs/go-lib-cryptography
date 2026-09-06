@@ -6,6 +6,11 @@ import (
 	"github.com/ChainSafe/go-schnorrkel"
 )
 
+// PrivateKey is the expanded 32-byte scalar schnorrkel signs with, with
+// the public key it derives to computed once at construction.
+//
+// It is not a Substrate seed. See the package doc: handing a seed to
+// PrivateKeyFromBytes yields a different, working key with no error.
 type PrivateKey struct {
 	key [SeckeyLen]byte
 	pub [PubkeyLen]byte
@@ -41,6 +46,7 @@ func newPrivateKey(key [SeckeyLen]byte) (*PrivateKey, error) {
 	}, nil
 }
 
+// GeneratePrivateKey returns a new key from crypto/rand.
 func GeneratePrivateKey() (*PrivateKey, error) {
 	sk, pk, err := schnorrkel.GenerateKeypair()
 	if err != nil {
@@ -59,6 +65,8 @@ func GeneratePrivateKey() (*PrivateKey, error) {
 	}, nil
 }
 
+// PrivateKeyFromBytes parses an expanded scalar, rejecting zero and
+// anything at or above the group order.
 func PrivateKeyFromBytes(b []byte) (*PrivateKey, error) {
 	var k [SeckeyLen]byte
 
@@ -70,16 +78,22 @@ func PrivateKeyFromBytes(b []byte) (*PrivateKey, error) {
 	return newPrivateKey(k)
 }
 
+// Bytes returns the expanded scalar, as a copy. It is secret: do not log
+// it, and clear it when done.
 func (k *PrivateKey) Bytes() [SeckeyLen]byte {
 	return k.key
 }
 
+// PublicKey returns the point this scalar derives to. It was computed at
+// construction, so this is a field read.
 func (k *PrivateKey) PublicKey() *PublicKey {
 	return &PublicKey{
 		key: k.pub,
 	}
 }
 
+// Equal reports whether o holds the same scalar. It is nil-safe, and
+// constant-time because the value is secret.
 func (k *PrivateKey) Equal(o *PrivateKey) bool {
 	if o == nil {
 		return false
@@ -87,6 +101,7 @@ func (k *PrivateKey) Equal(o *PrivateKey) bool {
 	return subtle.ConstantTimeCompare(k.key[:], o.key[:]) == 1
 }
 
+// IsZero catches a `var k PrivateKey`; no constructor returns one.
 func (k *PrivateKey) IsZero() bool {
 	return k == nil || *k == PrivateKey{}
 }

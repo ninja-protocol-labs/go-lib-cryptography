@@ -9,6 +9,8 @@ type Signature struct {
 	sig [SignatureLen]byte
 }
 
+// SignatureFromBytes wraps a signature, checking only the length. What
+// the bytes encode is checked by Verify.
 func SignatureFromBytes(b []byte) (*Signature, error) {
 	var s Signature
 
@@ -20,10 +22,13 @@ func SignatureFromBytes(b []byte) (*Signature, error) {
 	return &s, nil
 }
 
+// Bytes returns the signature, as a copy.
 func (s *Signature) Bytes() [SignatureLen]byte {
 	return s.sig
 }
 
+// Equal reports whether o holds the same bytes. It is nil-safe, and not
+// constant-time — a signature is public.
 func (s *Signature) Equal(o *Signature) bool {
 	if o == nil {
 		return false
@@ -36,6 +41,7 @@ func (s *Signature) IsZero() bool {
 	return s == nil || *s == Signature{}
 }
 
+// String returns the signature as lowercase hex.
 func (s *Signature) String() string {
 	return encoding.Hex.Encode(s.sig[:])
 }

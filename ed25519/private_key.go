@@ -6,6 +6,9 @@ import (
 	"crypto/subtle"
 )
 
+// PrivateKey is a 32-byte seed seed, with the public key it derives to and the
+// expanded form the signing functions take both computed once at
+// construction.
 type PrivateKey struct {
 	key [SeckeyLen]byte
 	pub [PubkeyLen]byte
@@ -15,6 +18,7 @@ type PrivateKey struct {
 	exp [ExpandedLen]byte
 }
 
+// GeneratePrivateKey returns a new key from crypto/rand.
 func GeneratePrivateKey() (*PrivateKey, error) {
 	var (
 		seed [SeckeyLen]byte
@@ -66,6 +70,8 @@ func PrivateKeyFromBytes(b []byte) (*PrivateKey, error) {
 	}, nil
 }
 
+// Bytes returns the seed, as a copy — not the expanded form. It is
+// secret: do not log it, and clear it when done.
 func (k *PrivateKey) Bytes() [SeckeyLen]byte {
 	return k.key
 }
@@ -79,6 +85,8 @@ func (k *PrivateKey) PublicKey() *PublicKey {
 	}
 }
 
+// Equal reports whether o holds the same seed. It is nil-safe, and
+// constant-time because the value is secret.
 func (k *PrivateKey) Equal(o *PrivateKey) bool {
 	if o == nil {
 		return false

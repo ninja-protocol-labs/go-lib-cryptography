@@ -48,6 +48,7 @@ func SignMinSig(k *PrivateKeyMinSig, msg []byte) (*SignatureMinSig, error) {
 	return SignMinSigWithDST(k, msg, []byte(DefaultDSTMinSig))
 }
 
+// SignMinSigWithDST is SignMinPkWithDST for the min-sig scheme.
 func SignMinSigWithDST(k *PrivateKeyMinSig, msg, dst []byte) (*SignatureMinSig, error) {
 	var sig bls12381.G1Affine
 
@@ -97,6 +98,7 @@ func VerifyMinSig(k *PublicKeyMinSig, msg []byte, sig *SignatureMinSig) bool {
 	return VerifyMinSigWithDST(k, msg, sig, []byte(DefaultDSTMinSig))
 }
 
+// VerifyMinSigWithDST is VerifyMinPkWithDST for the min-sig scheme.
 func VerifyMinSigWithDST(k *PublicKeyMinSig, msg []byte, sig *SignatureMinSig, dst []byte) bool {
 	var sigNeg bls12381.G1Affine
 

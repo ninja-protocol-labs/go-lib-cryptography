@@ -5,10 +5,14 @@ import (
 	"github.com/ninja-protocol-labs/go-lib-cryptography/encoding"
 )
 
+// PublicKeyMinPk is a point in G1 — the smaller group, which is what
+// min-pk chooses to make public keys cheap to store and transmit.
 type PublicKeyMinPk struct {
 	key [PubkeyMinPkLen]byte
 }
 
+// PublicKeyMinSig is a point in G2, twice the size, which is the price
+// min-sig pays for its smaller signatures.
 type PublicKeyMinSig struct {
 	key [PubkeyMinSigLen]byte
 }
@@ -34,6 +38,8 @@ func PublicKeyMinPkFromBytes(b []byte) (*PublicKeyMinPk, error) {
 	}, nil
 }
 
+// PublicKeyMinSigFromBytes is PublicKeyMinPkFromBytes for the min-sig
+// scheme, over a compressed G2 point.
 func PublicKeyMinSigFromBytes(b []byte) (*PublicKeyMinSig, error) {
 	var p bls12381.G2Affine
 
@@ -52,14 +58,17 @@ func PublicKeyMinSigFromBytes(b []byte) (*PublicKeyMinSig, error) {
 	}, nil
 }
 
+// Bytes returns the compressed G1 encoding, as a copy.
 func (k *PublicKeyMinPk) Bytes() [PubkeyMinPkLen]byte {
 	return k.key
 }
 
+// Bytes returns the compressed G2 encoding, as a copy.
 func (k *PublicKeyMinSig) Bytes() [PubkeyMinSigLen]byte {
 	return k.key
 }
 
+// Equal reports whether o is the same point. It is nil-safe.
 func (k *PublicKeyMinPk) Equal(o *PublicKeyMinPk) bool {
 	if o == nil {
 		return false
@@ -67,6 +76,7 @@ func (k *PublicKeyMinPk) Equal(o *PublicKeyMinPk) bool {
 	return k.key == o.key
 }
 
+// Equal reports whether o is the same point. It is nil-safe.
 func (k *PublicKeyMinSig) Equal(o *PublicKeyMinSig) bool {
 	if o == nil {
 		return false
@@ -79,14 +89,17 @@ func (k *PublicKeyMinPk) IsZero() bool {
 	return k == nil || *k == PublicKeyMinPk{}
 }
 
+// IsZero catches a `var k PublicKeyMinSig`; no constructor returns one.
 func (k *PublicKeyMinSig) IsZero() bool {
 	return k == nil || *k == PublicKeyMinSig{}
 }
 
+// String returns the compressed encoding as lowercase hex.
 func (k *PublicKeyMinPk) String() string {
 	return encoding.Hex.Encode(k.key[:])
 }
 
+// String returns the compressed encoding as lowercase hex.
 func (k *PublicKeyMinSig) String() string {
 	return encoding.Hex.Encode(k.key[:])
 }

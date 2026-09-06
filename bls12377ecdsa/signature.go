@@ -9,6 +9,10 @@ type Signature struct {
 	sig [SignatureLen]byte
 }
 
+// SignatureFromBytes wraps r ∥ s, checking only the length.
+//
+// The scalars are not range-checked here. Verify rejects an out-of-range
+// one, and doing it twice would only move the same rejection earlier.
 func SignatureFromBytes(b []byte) (*Signature, error) {
 	var s Signature
 
@@ -20,10 +24,13 @@ func SignatureFromBytes(b []byte) (*Signature, error) {
 	return &s, nil
 }
 
+// Bytes returns r ∥ s, as a copy.
 func (s *Signature) Bytes() [SignatureLen]byte {
 	return s.sig
 }
 
+// Equal reports whether o holds the same r and s. It is nil-safe, and not
+// constant-time — a signature is public.
 func (s *Signature) Equal(o *Signature) bool {
 	if o == nil {
 		return false
@@ -36,6 +43,7 @@ func (s *Signature) IsZero() bool {
 	return s == nil || *s == Signature{}
 }
 
+// String returns r ∥ s as lowercase hex.
 func (s *Signature) String() string {
 	return encoding.Hex.Encode(s.sig[:])
 }

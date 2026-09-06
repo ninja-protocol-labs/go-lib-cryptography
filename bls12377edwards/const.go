@@ -1,7 +1,7 @@
 // Package bls12377edwards implements EdDSA over the twisted Edwards curve
 // embedded in BLS12-377's scalar field 𝔽r — BLS12-377's companion curve,
 // the same construction Zcash's Jubjub is for BLS12-381 and Baby Jubjub
-// (EIP-2494) is for BLS12-377. Unlike those two it has no widely established
+// (EIP-2494) is for BN254. Unlike those two it has no widely established
 // name of its own; arkworks calls it ed_on_bls12_377 and Aleo calls it
 // Edwards BLS12.
 //

@@ -16,6 +16,7 @@ type PrivateKey struct {
 	pub [PubkeyLen]byte
 }
 
+// GeneratePrivateKey returns a new key from a seed read from crypto/rand.
 func GeneratePrivateKey() (*PrivateKey, error) {
 	var (
 		b   [SeckeyLen]byte
@@ -91,12 +92,17 @@ func (k *PrivateKey) Bytes() [SeckeyLen]byte {
 	return k.key
 }
 
+// PublicKey returns the point this key derives to. It was computed when
+// the seed was expanded, so this is a field read rather than a scalar
+// multiplication.
 func (k *PrivateKey) PublicKey() *PublicKey {
 	return &PublicKey{
 		key: k.pub,
 	}
 }
 
+// Equal reports whether o holds the same key material. It is nil-safe,
+// and constant-time because the value is secret.
 func (k *PrivateKey) Equal(o *PrivateKey) bool {
 	if o == nil {
 		return false
@@ -104,6 +110,7 @@ func (k *PrivateKey) Equal(o *PrivateKey) bool {
 	return subtle.ConstantTimeCompare(k.key[:], o.key[:]) == 1
 }
 
+// IsZero catches a `var k PrivateKey`; no constructor returns one.
 func (k *PrivateKey) IsZero() bool {
 	return k == nil || *k == PrivateKey{}
 }

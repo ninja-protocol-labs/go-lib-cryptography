@@ -5,6 +5,11 @@ import (
 	"github.com/ninja-protocol-labs/go-lib-cryptography/encoding"
 )
 
+// PublicKey is a point in BN254's G1, stored compressed.
+//
+// It is the same group and the same encoding a min-pk BLS public key uses,
+// and deliberately a different type: a key established for one scheme must
+// not sign under the other.
 type PublicKey struct {
 	key [PubkeyLen]byte
 }
@@ -29,10 +34,12 @@ func PublicKeyFromBytes(b []byte) (*PublicKey, error) {
 	}, nil
 }
 
+// Bytes returns the compressed G1 encoding, as a copy.
 func (k *PublicKey) Bytes() [PubkeyLen]byte {
 	return k.key
 }
 
+// Equal reports whether o is the same point. It is nil-safe.
 func (k *PublicKey) Equal(o *PublicKey) bool {
 	if o == nil {
 		return false
@@ -54,6 +61,7 @@ func (k *PublicKey) verifier() *ecdsa.PublicKey {
 	return &pub
 }
 
+// String returns the compressed encoding as lowercase hex.
 func (k *PublicKey) String() string {
 	return encoding.Hex.Encode(k.key[:])
 }

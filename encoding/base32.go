@@ -11,16 +11,18 @@ import "encoding/base32"
 // not. Unpadded is what TOTP secrets are usually written in (RFC 6238
 // authenticator keys) and what Tor v3 onion addresses use.
 var (
-	Base32    = base32Codec{base32.StdEncoding}
-	Base32Raw = base32Codec{base32.StdEncoding.WithPadding(base32.NoPadding)}
+	Base32    = Base32Codec{base32.StdEncoding}
+	Base32Raw = Base32Codec{base32.StdEncoding.WithPadding(base32.NoPadding)}
 )
 
-type base32Codec struct {
+// Base32Codec encodes and decodes base32. Base32 and Base32Raw are the
+// two instances, padded and not.
+type Base32Codec struct {
 	enc *base32.Encoding
 }
 
 // Encode returns b in uppercase base32.
-func (c base32Codec) Encode(b []byte) string {
+func (c Base32Codec) Encode(b []byte) string {
 	return c.enc.EncodeToString(b)
 }
 
@@ -28,8 +30,8 @@ func (c base32Codec) Encode(b []byte) string {
 // wants uppercase, which is what Encode produces.
 //
 // Every failure reports ErrMalformed, for the reason given on
-// base64Codec.Decode.
-func (c base32Codec) Decode(s string) ([]byte, error) {
+// Base64Codec.Decode.
+func (c Base32Codec) Decode(s string) ([]byte, error) {
 	b, err := c.enc.DecodeString(s)
 	if err != nil {
 		return nil, ErrMalformed
@@ -38,7 +40,7 @@ func (c base32Codec) Decode(s string) ([]byte, error) {
 }
 
 // DecodeInto parses s into dst, which must be exactly the decoded length.
-func (c base32Codec) DecodeInto(dst []byte, s string) error {
+func (c Base32Codec) DecodeInto(dst []byte, s string) error {
 	b, err := c.Decode(s)
 	return decodeInto(dst, b, err)
 }

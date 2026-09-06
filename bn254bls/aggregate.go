@@ -36,6 +36,8 @@ func AggregatePublicKeysMinPk(pks []*PublicKeyMinPk) (*PublicKeyMinPk, error) {
 	}, nil
 }
 
+// AggregatePublicKeysMinSig is AggregatePublicKeysMinPk for the min-sig
+// scheme, summing G2 points.
 func AggregatePublicKeysMinSig(pks []*PublicKeyMinSig) (*PublicKeyMinSig, error) {
 	var (
 		acc bn254.G2Jac
@@ -76,6 +78,8 @@ func AggregateSignaturesMinPk(sigs []*SignatureMinPk) (*SignatureMinPk, error) {
 	return a.Signature()
 }
 
+// AggregateSignaturesMinSig is AggregateSignaturesMinPk for the min-sig
+// scheme.
 func AggregateSignaturesMinSig(sigs []*SignatureMinSig) (*SignatureMinSig, error) {
 	var a SignatureAggregatorMinSig
 
@@ -98,6 +102,8 @@ func AggregateVerifyMinPk(pks []*PublicKeyMinPk, msgs [][]byte, sig *SignatureMi
 	return AggregateVerifyMinPkWithDST(pks, msgs, sig, []byte(DefaultDSTMinPk))
 }
 
+// AggregateVerifyMinPkWithDST is AggregateVerifyMinPk with a
+// caller-supplied domain separation tag.
 func AggregateVerifyMinPkWithDST(pks []*PublicKeyMinPk, msgs [][]byte, sig *SignatureMinPk, dst []byte) bool {
 	if len(pks) == 0 || len(pks) != len(msgs) || sig == nil {
 		return false
@@ -131,6 +137,8 @@ func AggregateVerifyMinSig(pks []*PublicKeyMinSig, msgs [][]byte, sig *Signature
 	return AggregateVerifyMinSigWithDST(pks, msgs, sig, []byte(DefaultDSTMinSig))
 }
 
+// AggregateVerifyMinSigWithDST is AggregateVerifyMinPkWithDST for the
+// min-sig scheme.
 func AggregateVerifyMinSigWithDST(pks []*PublicKeyMinSig, msgs [][]byte, sig *SignatureMinSig, dst []byte) bool {
 	var sigNeg bn254.G1Affine
 
@@ -180,6 +188,8 @@ func FastAggregateVerifyMinPk(pks []*PublicKeyMinPk, msg []byte, sig *SignatureM
 	return FastAggregateVerifyMinPkWithDST(pks, msg, sig, []byte(DefaultDSTMinPk))
 }
 
+// FastAggregateVerifyMinPkWithDST is FastAggregateVerifyMinPk with a
+// caller-supplied domain separation tag.
 func FastAggregateVerifyMinPkWithDST(pks []*PublicKeyMinPk, msg []byte, sig *SignatureMinPk, dst []byte) bool {
 	pk, err := AggregatePublicKeysMinPk(pks)
 	if err != nil {
@@ -194,6 +204,8 @@ func FastAggregateVerifyMinSig(pks []*PublicKeyMinSig, msg []byte, sig *Signatur
 	return FastAggregateVerifyMinSigWithDST(pks, msg, sig, []byte(DefaultDSTMinSig))
 }
 
+// FastAggregateVerifyMinSigWithDST is FastAggregateVerifyMinPkWithDST for
+// the min-sig scheme.
 func FastAggregateVerifyMinSigWithDST(pks []*PublicKeyMinSig, msg []byte, sig *SignatureMinSig, dst []byte) bool {
 	pk, err := AggregatePublicKeysMinSig(pks)
 	if err != nil {

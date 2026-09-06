@@ -23,8 +23,10 @@ const (
 	PubkeyMinPkLen  = 48
 	PubkeyMinSigLen = 96
 
-	// A signature lives in whichever group the scheme did not give the
-	// public key.
+	// SignatureMinPkLen and SignatureMinSigLen are the two signature
+	// lengths: a signature lives in whichever group the scheme did not
+	// give the public key, so each is the other scheme's public key
+	// length.
 	SignatureMinPkLen  = PubkeyMinSigLen
 	SignatureMinSigLen = PubkeyMinPkLen
 )

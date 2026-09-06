@@ -12,16 +12,21 @@ import "github.com/consensys/gnark-crypto/ecc/bls12-381"
 //
 // The zero value is an empty aggregator.
 
+// SignatureAggregatorMinPk sums min-pk signatures as they arrive. The
+// zero value is an empty aggregator.
 type SignatureAggregatorMinPk struct {
 	acc bls12381.G2Jac
 	n   int
 }
 
+// SignatureAggregatorMinSig is SignatureAggregatorMinPk for the min-sig
+// scheme.
 type SignatureAggregatorMinSig struct {
 	acc bls12381.G1Jac
 	n   int
 }
 
+// Add includes sig in the running sum.
 func (a *SignatureAggregatorMinPk) Add(sig *SignatureMinPk) error {
 	var term bls12381.G2Jac
 
@@ -36,6 +41,7 @@ func (a *SignatureAggregatorMinPk) Add(sig *SignatureMinPk) error {
 	return nil
 }
 
+// Add includes sig in the running sum.
 func (a *SignatureAggregatorMinSig) Add(sig *SignatureMinSig) error {
 	var term bls12381.G1Jac
 
@@ -50,10 +56,12 @@ func (a *SignatureAggregatorMinSig) Add(sig *SignatureMinSig) error {
 	return nil
 }
 
+// Len returns how many signatures have been added.
 func (a *SignatureAggregatorMinPk) Len() int {
 	return a.n
 }
 
+// Len returns how many signatures have been added.
 func (a *SignatureAggregatorMinSig) Len() int {
 	return a.n
 }
@@ -73,6 +81,8 @@ func (a *SignatureAggregatorMinPk) Signature() (*SignatureMinPk, error) {
 	}, nil
 }
 
+// Signature returns the running sum. It fails on an empty aggregator: the
+// sum would be the point at infinity, which verifies for nothing.
 func (a *SignatureAggregatorMinSig) Signature() (*SignatureMinSig, error) {
 	var sum bls12381.G1Affine
 

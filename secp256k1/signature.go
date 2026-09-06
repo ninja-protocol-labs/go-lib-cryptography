@@ -7,6 +7,8 @@ import (
 	"github.com/ninja-protocol-labs/go-lib-cryptography/encoding"
 )
 
+// Signature is an ECDSA signature as the pair (r, s), each a big-endian
+// scalar. Sign always produces low-s; parsing accepts either.
 type Signature struct {
 	r [SignatureScalarLen]byte
 	s [SignatureScalarLen]byte
@@ -37,6 +39,13 @@ func SignatureFromBytes(b []byte) (*Signature, error) {
 	return &sig, nil
 }
 
+// SignatureFromDER parses the ASN.1 DER encoding, rejecting trailing
+// bytes and the same out-of-range scalars SignatureFromBytes does.
+//
+// The parse is strict about DER's own rules — minimal integer encodings,
+// no unnecessary leading zeros — because a lax one accepts several
+// encodings of the same signature, which is a second source of
+// malleability alongside high-s.
 func SignatureFromDER(b []byte) (*Signature, error) {
 	var sig Signature
 
@@ -55,6 +64,8 @@ func SignatureFromDER(b []byte) (*Signature, error) {
 	return &sig, nil
 }
 
+// Bytes returns the compact encoding, r ∥ s, as a copy. This is what
+// Ethereum and Bitcoin's Schnorr-era formats carry; DER is the older form.
 func (sig *Signature) Bytes() [SignatureCompactLen]byte {
 	var b [SignatureCompactLen]byte
 
@@ -63,11 +74,26 @@ func (sig *Signature) Bytes() [SignatureCompactLen]byte {
 	return b
 }
 
+// DER returns the ASN.1 DER encoding Bitcoin script signatures carry.
+//
+// It is a slice because DER is variable-length. DER integers are signed
+// and minimally encoded, so a leading zero byte is prepended when the high
+// bit is set and leading zero bytes are otherwise stripped. For signatures
+// this package produces that gives 70 or 71 bytes almost always, and 68 or
+// 69 on the rare value with leading zeros. It never reaches 72: Sign
+// normalises s below n/2, so s never needs the pad byte and only r can.
+// A high-s signature from elsewhere can be 72, and SignatureFromDER
+// parses it.
 func (sig *Signature) DER() []byte {
 	r, s := sig.scalars()
 	return ecdsa.NewSignature(&r, &s).Serialize()
 }
 
+// Equal reports whether other holds the same r and s. It is nil-safe, and
+// not constant-time — a signature is public.
+//
+// A signature and its malleated form (r, n-s) are different values here.
+// Only one of them verifies: Verify rejects high-s.
 func (sig *Signature) Equal(other *Signature) bool {
 	if other == nil {
 		return false
@@ -81,6 +107,7 @@ func (sig *Signature) IsZero() bool {
 	return sig == nil || *sig == Signature{}
 }
 
+// String returns the compact encoding as lowercase hex.
 func (sig *Signature) String() string {
 	b := sig.Bytes()
 	return encoding.Hex.Encode(b[:])

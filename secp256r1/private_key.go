@@ -12,6 +12,10 @@ import (
 
 func curve() elliptic.Curve { return elliptic.P256() }
 
+// PrivateKey is a P-256 scalar. Both encodings of the public key it
+// derives to are computed once at construction: recovering the
+// uncompressed form from the compressed one costs a modular square root,
+// which Verify and ECDH would otherwise pay on every call.
 type PrivateKey struct {
 	key [SeckeyLen]byte
 	pub [PubkeyCompressedLen]byte
@@ -44,6 +48,7 @@ func newPrivateKey(key [SeckeyLen]byte) (*PrivateKey, error) {
 	}, nil
 }
 
+// GeneratePrivateKey returns a new key from crypto/rand.
 func GeneratePrivateKey() (*PrivateKey, error) {
 	var key [SeckeyLen]byte
 
@@ -61,6 +66,8 @@ func GeneratePrivateKey() (*PrivateKey, error) {
 	return newPrivateKey(key)
 }
 
+// PrivateKeyFromBytes parses a big-endian scalar, rejecting anything
+// outside [1, n-1].
 func PrivateKeyFromBytes(b []byte) (*PrivateKey, error) {
 	var key [SeckeyLen]byte
 
@@ -72,10 +79,15 @@ func PrivateKeyFromBytes(b []byte) (*PrivateKey, error) {
 	return newPrivateKey(key)
 }
 
+// Bytes returns the scalar big-endian, as a copy. It is secret: do not
+// log it, and clear it when done.
 func (k *PrivateKey) Bytes() [SeckeyLen]byte {
 	return k.key
 }
 
+// PublicKey returns the key this scalar derives to. Both encodings were
+// computed at construction, so this copies fields rather than doing curve
+// arithmetic.
 func (k *PrivateKey) PublicKey() *PublicKey {
 	return &PublicKey{
 		key: k.pub,
@@ -83,6 +95,8 @@ func (k *PrivateKey) PublicKey() *PublicKey {
 	}
 }
 
+// Equal reports whether o holds the same scalar. It is nil-safe, and
+// constant-time because the value is secret.
 func (k *PrivateKey) Equal(o *PrivateKey) bool {
 	if o == nil {
 		return false
@@ -90,6 +104,8 @@ func (k *PrivateKey) Equal(o *PrivateKey) bool {
 	return subtle.ConstantTimeCompare(k.key[:], o.key[:]) == 1
 }
 
+// IsZero catches a `var k PrivateKey`; no constructor returns one, since
+// zero is not a valid scalar.
 func (k *PrivateKey) IsZero() bool {
 	return k == nil || *k == PrivateKey{}
 }
