@@ -1,126 +1,92 @@
 package sr25519
 
-import "testing"
+import (
+	"testing"
 
-func TestDeriveHardProducesUsableKey(t *testing.T) {
-	priv := aliceKey(t)
-	var chainCode [ChainCodeLen]byte
-	chainCode[0] = 1
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
 
-	child, newCC, err := priv.DeriveHard(chainCode, []byte("index"))
-	if err != nil {
-		t.Fatalf("DeriveHard failed: %v", err)
-	}
-	if child.Equal(priv) {
-		t.Error("DeriveHard produced a child identical to the parent")
-	}
+func chainCodeN(n byte) [ChainCodeLen]byte {
+	var cc [ChainCodeLen]byte
+	cc[ChainCodeLen-1] = n
+	return cc
+}
 
-	childPub, err := child.PublicKey()
-	if err != nil {
-		t.Fatalf("PublicKey failed: %v", err)
-	}
+// A hard-derived child must be a working key, with its cached public key
+// derived rather than left zero.
+func TestDeriveHardProducesAUsableKey(t *testing.T) {
+	cc := chainCodeN(1)
+
+	child, _, err := aliceKey(t).DeriveHard(cc, []byte("//child"))
+	require.NoError(t, err)
+
+	assert.False(t, child.IsZero())
+	assert.False(t, child.PublicKey().IsZero())
 
 	sig, err := Sign(child, testCtx, testMsg)
-	if err != nil {
-		t.Fatalf("Sign failed: %v", err)
-	}
-	if !Verify(childPub, testCtx, testMsg, sig) {
-		t.Error("a signature from a hard-derived key failed to verify under its own derived public key")
-	}
-
-	// Deriving again with the (possibly different) resulting chain code
-	// must still work — it's just another valid chain code.
-	if _, _, err := child.DeriveHard(newCC, []byte("index-2")); err != nil {
-		t.Errorf("DeriveHard on a derived key failed: %v", err)
-	}
+	require.NoError(t, err)
+	assert.True(t, Verify(child.PublicKey(), testCtx, testMsg, sig))
 }
 
 func TestDeriveHardIsDeterministic(t *testing.T) {
-	priv := aliceKey(t)
-	var chainCode [ChainCodeLen]byte
-	chainCode[0] = 1
+	cc := chainCodeN(1)
+	k := aliceKey(t)
 
-	child1, cc1, err := priv.DeriveHard(chainCode, []byte("index"))
-	if err != nil {
-		t.Fatalf("DeriveHard failed: %v", err)
-	}
-	child2, cc2, err := priv.DeriveHard(chainCode, []byte("index"))
-	if err != nil {
-		t.Fatalf("DeriveHard failed: %v", err)
-	}
+	a, ccA, err := k.DeriveHard(cc, []byte("//child"))
+	require.NoError(t, err)
+	b, ccB, err := k.DeriveHard(cc, []byte("//child"))
+	require.NoError(t, err)
 
-	if !child1.Equal(child2) {
-		t.Error("DeriveHard with the same chain code and index produced two different keys")
-	}
-	if cc1 != cc2 {
-		t.Error("DeriveHard with the same chain code and index produced two different resulting chain codes")
-	}
+	assert.True(t, a.Equal(b))
+	assert.Equal(t, ccA, ccB)
 }
 
-func TestDeriveHardDiffersByIndex(t *testing.T) {
-	priv := aliceKey(t)
-	var chainCode [ChainCodeLen]byte
+func TestDeriveHardVariesByIndexAndChainCode(t *testing.T) {
+	k := aliceKey(t)
 
-	child1, _, err := priv.DeriveHard(chainCode, []byte("index-1"))
-	if err != nil {
-		t.Fatalf("DeriveHard failed: %v", err)
-	}
-	child2, _, err := priv.DeriveHard(chainCode, []byte("index-2"))
-	if err != nil {
-		t.Fatalf("DeriveHard failed: %v", err)
-	}
+	base, _, err := k.DeriveHard(chainCodeN(1), []byte("//one"))
+	require.NoError(t, err)
 
-	if child1.Equal(child2) {
-		t.Error("DeriveHard produced the same child for two different indices")
-	}
+	byIndex, _, err := k.DeriveHard(chainCodeN(1), []byte("//two"))
+	require.NoError(t, err)
+	assert.False(t, base.Equal(byIndex))
+
+	byChainCode, _, err := k.DeriveHard(chainCodeN(2), []byte("//one"))
+	require.NoError(t, err)
+	assert.False(t, base.Equal(byChainCode))
+
+	assert.False(t, base.Equal(k), "the child equals its parent")
 }
 
-func TestDeriveSoftIsDeterministic(t *testing.T) {
-	priv := aliceKey(t)
-	pub, err := priv.PublicKey()
-	if err != nil {
-		t.Fatalf("PublicKey failed: %v", err)
-	}
+func TestDeriveSoftIsDeterministicAndVaries(t *testing.T) {
+	pub := aliceKey(t).PublicKey()
+	cc := chainCodeN(1)
 
-	var chainCode [ChainCodeLen]byte
-	chainCode[0] = 7
+	a, ccA, err := pub.DeriveSoft(cc, []byte("//child"))
+	require.NoError(t, err)
+	b, ccB, err := pub.DeriveSoft(cc, []byte("//child"))
+	require.NoError(t, err)
 
-	childPub1, cc1, err := pub.DeriveSoft(chainCode, []byte("index"))
-	if err != nil {
-		t.Fatalf("DeriveSoft failed: %v", err)
-	}
-	childPub2, cc2, err := pub.DeriveSoft(chainCode, []byte("index"))
-	if err != nil {
-		t.Fatalf("DeriveSoft failed: %v", err)
-	}
+	assert.True(t, a.Equal(b))
+	assert.Equal(t, ccA, ccB)
+	assert.False(t, a.Equal(pub), "the child equals its parent")
 
-	if !childPub1.Equal(childPub2) {
-		t.Error("DeriveSoft with the same chain code and index produced two different public keys")
-	}
-	if cc1 != cc2 {
-		t.Error("DeriveSoft with the same chain code and index produced two different resulting chain codes")
-	}
+	other, _, err := pub.DeriveSoft(cc, []byte("//other"))
+	require.NoError(t, err)
+	assert.False(t, a.Equal(other))
 }
 
-func TestDeriveSoftDiffersByIndex(t *testing.T) {
-	priv := aliceKey(t)
-	pub, err := priv.PublicKey()
-	if err != nil {
-		t.Fatalf("PublicKey failed: %v", err)
-	}
+func TestDeriveRejectsNil(t *testing.T) {
+	var (
+		nilPriv *PrivateKey
+		nilPub  *PublicKey
+	)
+	cc := chainCodeN(1)
 
-	var chainCode [ChainCodeLen]byte
+	_, _, err := nilPriv.DeriveHard(cc, []byte("//x"))
+	assert.ErrorIs(t, err, ErrDeriveFailed)
 
-	child1, _, err := pub.DeriveSoft(chainCode, []byte("index-1"))
-	if err != nil {
-		t.Fatalf("DeriveSoft failed: %v", err)
-	}
-	child2, _, err := pub.DeriveSoft(chainCode, []byte("index-2"))
-	if err != nil {
-		t.Fatalf("DeriveSoft failed: %v", err)
-	}
-
-	if child1.Equal(child2) {
-		t.Error("DeriveSoft produced the same child for two different indices")
-	}
+	_, _, err = nilPub.DeriveSoft(cc, []byte("//x"))
+	assert.ErrorIs(t, err, ErrDeriveFailed)
 }

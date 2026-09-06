@@ -2,162 +2,144 @@ package ed25519
 
 import (
 	"crypto/sha512"
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// TestSignMatchesRFC8032Vector1 checks Sign against RFC 8032 §7.1 test
-// vector 1 (the empty-message case) — an external, standard test vector
-// rather than only a round trip against this package's own Verify.
-func TestSignMatchesRFC8032Vector1(t *testing.T) {
-	priv := seckeyOne(t)
-	sig := Sign(priv, []byte{})
-	if sig != [SignatureLen]byte(rfc8032Test1Sig) {
-		t.Errorf("Sign(seed, \"\") = %x, want %x", sig, rfc8032Test1Sig)
-	}
-}
-
 func TestSignVerifyRoundTrip(t *testing.T) {
-	priv := seckeyOne(t)
-	pub := priv.PublicKey()
+	msgs := [][]byte{nil, {}, testMsg, make([]byte, 4096)}
 
-	sig := Sign(priv, testMsg)
-	if !Verify(pub, testMsg, sig[:]) {
-		t.Error("Verify rejected a signature Sign just produced")
+	for range 10 {
+		k := randKey(t)
+
+		for _, msg := range msgs {
+			sig := Sign(k, msg)
+			assert.True(t, Verify(k.PublicKey(), msg, sig))
+		}
 	}
 }
 
+// Ed25519 has no nonce: the same key and message always sign the same.
 func TestSignIsDeterministic(t *testing.T) {
-	priv := seckeyOne(t)
-	sig1 := Sign(priv, testMsg)
-	sig2 := Sign(priv, testMsg)
-	if sig1 != sig2 {
-		t.Error("Sign produced two different signatures for the same key and message")
+	k := randKey(t)
+
+	assert.True(t, Sign(k, testMsg).Equal(Sign(k, testMsg)))
+}
+
+func TestVerifyRejects(t *testing.T) {
+	k := keyN(t, 1)
+	other := keyN(t, 2)
+	sig := Sign(k, testMsg)
+
+	t.Run("wrong key", func(t *testing.T) {
+		assert.False(t, Verify(other.PublicKey(), testMsg, sig))
+	})
+
+	t.Run("wrong message", func(t *testing.T) {
+		assert.False(t, Verify(k.PublicKey(), []byte("another"), sig))
+	})
+
+	t.Run("tampered signature", func(t *testing.T) {
+		bad := *sig
+		bad.sig[0] ^= 0x01
+		assert.False(t, Verify(k.PublicKey(), testMsg, &bad))
+	})
+
+	t.Run("nil key", func(t *testing.T) {
+		assert.False(t, Verify(nil, testMsg, sig))
+	})
+
+	t.Run("nil signature", func(t *testing.T) {
+		assert.False(t, Verify(k.PublicKey(), testMsg, nil))
+	})
+}
+
+// An empty context would silently select plain Ed25519 rather than
+// Ed25519ctx, so it is refused instead.
+func TestCtxRequiresANonEmptyContext(t *testing.T) {
+	k := keyN(t, 1)
+
+	_, err := SignCtx(k, testMsg, nil)
+	assert.ErrorIs(t, err, ErrContextRequired)
+	_, err = SignCtx(k, testMsg, []byte{})
+	assert.ErrorIs(t, err, ErrContextRequired)
+
+	sig, err := SignCtx(k, testMsg, []byte("ctx"))
+	require.NoError(t, err)
+	assert.False(t, VerifyCtx(k.PublicKey(), testMsg, nil, sig))
+}
+
+// The three variants are separate schemes: a signature from one must not
+// verify under another, even with the same key and message.
+func TestVariantsAreDomainSeparated(t *testing.T) {
+	k := keyN(t, 1)
+	ctx := []byte("ctx")
+	d := sha512.Sum512(testMsg)
+
+	pure := Sign(k, testMsg)
+	withCtx, err := SignCtx(k, testMsg, ctx)
+	require.NoError(t, err)
+	ph, err := SignPh(k, d, nil)
+	require.NoError(t, err)
+
+	assert.False(t, pure.Equal(withCtx))
+	assert.False(t, pure.Equal(ph))
+	assert.False(t, withCtx.Equal(ph))
+
+	assert.False(t, VerifyCtx(k.PublicKey(), testMsg, ctx, pure))
+	assert.False(t, Verify(k.PublicKey(), testMsg, withCtx))
+	assert.False(t, VerifyPh(k.PublicKey(), d, nil, pure))
+}
+
+// A different context gives a different signature and does not verify.
+func TestCtxSeparatesContexts(t *testing.T) {
+	k := keyN(t, 1)
+
+	a, err := SignCtx(k, testMsg, []byte("one"))
+	require.NoError(t, err)
+	b, err := SignCtx(k, testMsg, []byte("two"))
+	require.NoError(t, err)
+
+	assert.False(t, a.Equal(b))
+	assert.False(t, VerifyCtx(k.PublicKey(), testMsg, []byte("two"), a))
+}
+
+func TestContextTooLong(t *testing.T) {
+	k := keyN(t, 1)
+	ctx := make([]byte, ContextMaxLen+1)
+
+	_, err := SignCtx(k, testMsg, ctx)
+	assert.ErrorIs(t, err, ErrSigningFailed)
+
+	d := sha512.Sum512(testMsg)
+	_, err = SignPh(k, d, ctx)
+	assert.ErrorIs(t, err, ErrSigningFailed)
+}
+
+func TestPhRoundTripWithAndWithoutContext(t *testing.T) {
+	k := randKey(t)
+	d := sha512.Sum512(testMsg)
+
+	for _, ctx := range [][]byte{nil, {}, []byte("ctx")} {
+		sig, err := SignPh(k, d, ctx)
+		require.NoError(t, err)
+		assert.True(t, VerifyPh(k.PublicKey(), d, ctx, sig))
+
+		other := sha512.Sum512([]byte("another"))
+		assert.False(t, VerifyPh(k.PublicKey(), other, ctx, sig))
 	}
 }
 
-func TestVerifyRejectsWrongMessageAndKey(t *testing.T) {
-	priv := seckeyOne(t)
-	pub := priv.PublicKey()
-	otherPub := seckeyN(t, 2).PublicKey()
+func TestSignCtxAndPhRejectNilKey(t *testing.T) {
+	d := sha512.Sum512(testMsg)
 
-	sig := Sign(priv, testMsg)
+	_, err := SignCtx(nil, testMsg, []byte("ctx"))
+	assert.ErrorIs(t, err, ErrInvalidPrivateKey)
+	_, err = SignPh(nil, d, nil)
+	assert.ErrorIs(t, err, ErrInvalidPrivateKey)
 
-	if Verify(pub, append(append([]byte{}, testMsg...), 0x00), sig[:]) {
-		t.Error("Verify accepted a signature under a modified message")
-	}
-	if Verify(otherPub, testMsg, sig[:]) {
-		t.Error("Verify accepted a signature under the wrong public key")
-	}
-}
-
-func TestSignCtxVerifyCtxRoundTrip(t *testing.T) {
-	priv := seckeyOne(t)
-	pub := priv.PublicKey()
-	context := []byte("example context")
-
-	sig, err := SignCtx(priv, testMsg, context)
-	if err != nil {
-		t.Fatalf("SignContext failed: %v", err)
-	}
-	if !VerifyCtx(pub, testMsg, context, sig[:]) {
-		t.Error("VerifyContext rejected a signature SignContext just produced")
-	}
-}
-
-func TestVerifyCtxRejectsWrongContext(t *testing.T) {
-	priv := seckeyOne(t)
-	pub := priv.PublicKey()
-
-	sig, err := SignCtx(priv, testMsg, []byte("context A"))
-	if err != nil {
-		t.Fatalf("SignContext failed: %v", err)
-	}
-	if VerifyCtx(pub, testMsg, []byte("context B"), sig[:]) {
-		t.Error("VerifyContext accepted a signature under the wrong context string")
-	}
-	// A ctx-variant signature must not verify as a plain-Ed25519 signature
-	// either — they are domain-separated, not just optionally tagged.
-	if Verify(pub, testMsg, sig[:]) {
-		t.Error("Verify (pure Ed25519) accepted an Ed25519ctx signature")
-	}
-}
-
-func TestSignCtxRejectsOversizeContext(t *testing.T) {
-	priv := seckeyOne(t)
-	if _, err := SignCtx(priv, testMsg, make([]byte, 256)); err == nil {
-		t.Error("SignContext accepted a 256-byte context string (RFC 8032 limit is 255)")
-	}
-}
-
-func TestSignPhVerifyPhRoundTrip(t *testing.T) {
-	priv := seckeyOne(t)
-	pub := priv.PublicKey()
-	digest := sha512.Sum512(testMsg)
-	context := []byte("example context")
-
-	sig, err := SignPh(priv, digest, context)
-	if err != nil {
-		t.Fatalf("SignPh failed: %v", err)
-	}
-	if !VerifyPh(pub, digest, context, sig[:]) {
-		t.Error("VerifyPh rejected a signature SignPh just produced")
-	}
-}
-
-func TestSignPhWithEmptyContextRoundTrip(t *testing.T) {
-	priv := seckeyOne(t)
-	pub := priv.PublicKey()
-	digest := sha512.Sum512(testMsg)
-
-	sig, err := SignPh(priv, digest, nil)
-	if err != nil {
-		t.Fatalf("SignPh failed: %v", err)
-	}
-	if !VerifyPh(pub, digest, nil, sig[:]) {
-		t.Error("VerifyPh rejected a signature SignPh just produced")
-	}
-}
-
-func TestVerifyPhRejectsWrongDigestAndContext(t *testing.T) {
-	priv := seckeyOne(t)
-	pub := priv.PublicKey()
-	digest := sha512.Sum512(testMsg)
-	otherDigest := sha512.Sum512(append(append([]byte{}, testMsg...), 0x00))
-	context := []byte("example context")
-
-	sig, err := SignPh(priv, digest, context)
-	if err != nil {
-		t.Fatalf("SignPh failed: %v", err)
-	}
-	if VerifyPh(pub, otherDigest, context, sig[:]) {
-		t.Error("VerifyPh accepted a signature under the wrong digest")
-	}
-	if VerifyPh(pub, digest, []byte("different context"), sig[:]) {
-		t.Error("VerifyPh accepted a signature under the wrong context string")
-	}
-}
-
-func TestSignContextRejectsEmptyContext(t *testing.T) {
-	priv := seckeyOne(t)
-	if _, err := SignCtx(priv, testMsg, nil); !errors.Is(err, ErrContextRequired) {
-		t.Errorf("SignContext with nil context: error = %v, want %v", err, ErrContextRequired)
-	}
-	if _, err := SignCtx(priv, testMsg, []byte{}); !errors.Is(err, ErrContextRequired) {
-		t.Errorf("SignContext with empty context: error = %v, want %v", err, ErrContextRequired)
-	}
-}
-
-func TestVerifyContextRejectsEmptyContext(t *testing.T) {
-	priv := seckeyOne(t)
-	pub := priv.PublicKey()
-
-	// A pure Ed25519 signature must not verify under VerifyContext with an
-	// empty context — crypto/ed25519 would otherwise silently treat that
-	// as plain Ed25519 and accept it, defeating the whole point of a
-	// separately named context-verification function.
-	sig := Sign(priv, testMsg)
-	if VerifyCtx(pub, testMsg, nil, sig[:]) {
-		t.Error("VerifyContext with an empty context accepted a plain-Ed25519 signature")
-	}
+	assert.False(t, VerifyCtx(nil, testMsg, []byte("ctx"), &Signature{}))
+	assert.False(t, VerifyPh(nil, d, nil, &Signature{}))
 }

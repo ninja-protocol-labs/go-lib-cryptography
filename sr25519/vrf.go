@@ -3,86 +3,113 @@ package sr25519
 import (
 	"github.com/ChainSafe/go-schnorrkel"
 	"github.com/gtank/merlin"
+	"github.com/ninja-protocol-labs/go-lib-cryptography/encoding"
 )
 
-// VRF (Verifiable Random Function) sign and verify.
-//
-// How the (context, message) pair is turned into the transcript the VRF
-// actually operates on is this package's own choice, not a wire format
-// mandated by schnorrkel or any spec: schnorrkel's VRF takes an arbitrary
-// Merlin transcript and leaves its construction to the caller. Real
-// chains that use this VRF (Polkadot/Substrate) build that transcript out
-// of protocol-specific material (block number, epoch randomness, ...),
-// which is exactly the kind of protocol logic this library stays out of
-// — so cross-verifying a VRF output produced by this package against a
-// chain's own VRF usage isn't meaningful, only against another call to
-// this same package's SignVRF/VerifyVRF. SignVRF and VerifyVRF each build
-// this transcript themselves (merlin.NewTranscript(string(context)),
-// appending message under the label "message") rather than sharing a
-// helper, the same reasoning as sign.go's Sign/Verify.
+// How a (context, message) pair becomes the Merlin transcript the VRF
+// operates on is this package's own choice: schnorrkel takes an arbitrary
+// transcript and leaves its construction to the caller. Chains that use
+// this VRF build theirs from protocol material (block number, epoch
+// randomness), so an output from here cross-verifies only against this
+// package, not against a chain's own VRF.
 
-// VRFOutput is a 32-byte VRF output.
 type VRFOutput struct {
 	out [VRFOutputLen]byte
 }
 
-// VRFOutputFromBytes parses a 32-byte VRF output, verifying it decodes to
-// a canonically-encoded Ristretto point.
+type VRFProof struct {
+	proof [VRFProofLen]byte
+}
+
 func VRFOutputFromBytes(b []byte) (*VRFOutput, error) {
+	var enc [VRFOutputLen]byte
+
 	if len(b) != VRFOutputLen {
 		return nil, ErrInvalidVRFOutput
 	}
-	var enc [VRFOutputLen]byte
+
 	copy(enc[:], b)
 	if _, err := schnorrkel.NewOutput(enc); err != nil {
 		return nil, ErrInvalidVRFOutput
 	}
+
 	return &VRFOutput{
 		out: enc,
 	}, nil
 }
 
-// Bytes returns the 32-byte encoding of the VRF output.
-func (o *VRFOutput) Bytes() [VRFOutputLen]byte {
-	return o.out
-}
-
-// VRFProof is a 64-byte VRF proof.
-type VRFProof struct {
-	proof [VRFProofLen]byte
-}
-
-// VRFProofFromBytes parses a 64-byte VRF proof.
 func VRFProofFromBytes(b []byte) (*VRFProof, error) {
+	var (
+		enc [VRFProofLen]byte
+		p   schnorrkel.VrfProof
+	)
+
 	if len(b) != VRFProofLen {
 		return nil, ErrInvalidVRFProof
 	}
-	var enc [VRFProofLen]byte
+
 	copy(enc[:], b)
-	var p schnorrkel.VrfProof
 	if err := p.Decode(enc); err != nil {
 		return nil, ErrInvalidVRFProof
 	}
+
 	return &VRFProof{
 		proof: enc,
 	}, nil
 }
 
-// Bytes returns the 64-byte encoding of the VRF proof.
+func (o *VRFOutput) Bytes() [VRFOutputLen]byte {
+	return o.out
+}
+
+func (o *VRFOutput) Equal(x *VRFOutput) bool {
+	if x == nil {
+		return false
+	}
+	return o.out == x.out
+}
+
+func (o *VRFOutput) IsZero() bool {
+	return o == nil || *o == VRFOutput{}
+}
+
+func (o *VRFOutput) String() string {
+	return encoding.Hex.Encode(o.out[:])
+}
+
 func (p *VRFProof) Bytes() [VRFProofLen]byte {
 	return p.proof
 }
 
-// SignVRF computes a VRF output and proof for message under priv,
-// domain-separated by context.
-func SignVRF(priv *PrivateKey, context, message []byte) (*VRFOutput, *VRFProof, error) {
-	t := merlin.NewTranscript(string(context))
-	t.AppendMessage([]byte("message"), message)
+func (p *VRFProof) Equal(x *VRFProof) bool {
+	if x == nil {
+		return false
+	}
+	return p.proof == x.proof
+}
 
-	inout, proof, err := priv.secretKey().VrfSign(t)
+func (p *VRFProof) IsZero() bool {
+	return p == nil || *p == VRFProof{}
+}
+
+func (p *VRFProof) String() string {
+	return encoding.Hex.Encode(p.proof[:])
+}
+
+// SignVRF computes a VRF output and proof for msg under k, separated by ctx.
+func SignVRF(k *PrivateKey, ctx, msg []byte) (*VRFOutput, *VRFProof, error) {
+	if k == nil {
+		return nil, nil, ErrInvalidPrivateKey
+	}
+
+	t := merlin.NewTranscript(string(ctx))
+	t.AppendMessage([]byte("message"), msg)
+
+	inout, proof, err := k.secretKey().VrfSign(t)
 	if err != nil {
 		return nil, nil, ErrVRFSignFailed
 	}
+
 	return &VRFOutput{
 		out: inout.Output().Encode(),
 	}, &VRFProof{
@@ -90,24 +117,27 @@ func SignVRF(priv *PrivateKey, context, message []byte) (*VRFOutput, *VRFProof, 
 	}, nil
 }
 
-// VerifyVRF reports whether proof certifies that out is the correct VRF
-// output for message under pub and context.
-func VerifyVRF(pub *PublicKey, context, message []byte, out *VRFOutput, proof *VRFProof) bool {
-	var so schnorrkel.VrfOutput
+// VerifyVRF reports whether proof certifies out as the VRF output for msg
+// under k and ctx.
+func VerifyVRF(k *PublicKey, ctx, msg []byte, out *VRFOutput, proof *VRFProof) bool {
+	var (
+		so schnorrkel.VrfOutput
+		sp schnorrkel.VrfProof
+	)
+
+	if k == nil || out == nil || proof == nil {
+		return false
+	}
 	if err := so.Decode(out.out); err != nil {
 		return false
 	}
-	var sp schnorrkel.VrfProof
 	if err := sp.Decode(proof.proof); err != nil {
 		return false
 	}
 
-	t := merlin.NewTranscript(string(context))
-	t.AppendMessage([]byte("message"), message)
+	t := merlin.NewTranscript(string(ctx))
+	t.AppendMessage([]byte("message"), msg)
 
-	ok, err := pub.schnorrkelKey().VrfVerify(t, &so, &sp)
-	if err != nil {
-		return false
-	}
-	return ok
+	ok, err := k.schnorrkelKey().VrfVerify(t, &so, &sp)
+	return err == nil && ok
 }

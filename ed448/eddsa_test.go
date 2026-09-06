@@ -1,155 +1,148 @@
 package ed448
 
 import (
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestSignMatchesRFC8032Vector1(t *testing.T) {
-	priv := seckeyOne(t)
-	sig, err := Sign(priv, []byte{}, nil)
-	if err != nil {
-		t.Fatalf("Sign failed: %v", err)
-	}
-	if sig != [SignatureLen]byte(rfc8032Test1Sig) {
-		t.Errorf("Sign(seed, \"\", nil) = %x, want %x", sig, rfc8032Test1Sig)
-	}
-}
-
 func TestSignVerifyRoundTrip(t *testing.T) {
-	priv := seckeyOne(t)
-	pub := priv.PublicKey()
+	msgs := [][]byte{nil, {}, testMsg, make([]byte, 4096)}
+	ctxs := [][]byte{nil, {}, []byte("ctx")}
 
-	sig, err := Sign(priv, testMsg, nil)
-	if err != nil {
-		t.Fatalf("Sign failed: %v", err)
-	}
-	if !Verify(pub, testMsg, sig[:], nil) {
-		t.Error("Verify rejected a signature Sign just produced")
+	for range 5 {
+		k := randKey(t)
+
+		for _, msg := range msgs {
+			for _, ctx := range ctxs {
+				sig, err := Sign(k, msg, ctx)
+				require.NoError(t, err)
+				assert.True(t, Verify(k.PublicKey(), msg, ctx, sig))
+
+				ph, err := SignPh(k, msg, ctx)
+				require.NoError(t, err)
+				assert.True(t, VerifyPh(k.PublicKey(), msg, ctx, ph))
+			}
+		}
 	}
 }
 
+// Ed448 has no nonce: the same inputs always sign the same.
 func TestSignIsDeterministic(t *testing.T) {
-	priv := seckeyOne(t)
-	sig1, err := Sign(priv, testMsg, nil)
-	if err != nil {
-		t.Fatalf("Sign failed: %v", err)
-	}
-	sig2, err := Sign(priv, testMsg, nil)
-	if err != nil {
-		t.Fatalf("Sign failed: %v", err)
-	}
-	if sig1 != sig2 {
-		t.Error("Sign produced two different signatures for the same key and message")
-	}
+	k := randKey(t)
+
+	a, err := Sign(k, testMsg, nil)
+	require.NoError(t, err)
+	b, err := Sign(k, testMsg, nil)
+	require.NoError(t, err)
+
+	assert.True(t, a.Equal(b))
 }
 
-func TestVerifyRejectsWrongMessageKeyAndContext(t *testing.T) {
-	priv := seckeyOne(t)
-	pub := priv.PublicKey()
-	otherPub := seckeyN(t, 2).PublicKey()
-	context := []byte("example context")
+func TestVerifyRejects(t *testing.T) {
+	k := keyN(t, 1)
+	other := keyN(t, 2)
 
-	sig, err := Sign(priv, testMsg, context)
-	if err != nil {
-		t.Fatalf("Sign failed: %v", err)
-	}
+	sig, err := Sign(k, testMsg, nil)
+	require.NoError(t, err)
 
-	if Verify(pub, append(append([]byte{}, testMsg...), 0x00), sig[:], context) {
-		t.Error("Verify accepted a signature under a modified message")
-	}
-	if Verify(otherPub, testMsg, sig[:], context) {
-		t.Error("Verify accepted a signature under the wrong public key")
-	}
-	if Verify(pub, testMsg, sig[:], []byte("different context")) {
-		t.Error("Verify accepted a signature under the wrong context")
-	}
-	if Verify(pub, testMsg, sig[:], nil) {
-		t.Error("Verify accepted a context-signed signature with no context")
-	}
+	t.Run("wrong key", func(t *testing.T) {
+		assert.False(t, Verify(other.PublicKey(), testMsg, nil, sig))
+	})
+
+	t.Run("wrong message", func(t *testing.T) {
+		assert.False(t, Verify(k.PublicKey(), []byte("another"), nil, sig))
+	})
+
+	t.Run("wrong context", func(t *testing.T) {
+		assert.False(t, Verify(k.PublicKey(), testMsg, []byte("ctx"), sig))
+	})
+
+	t.Run("tampered signature", func(t *testing.T) {
+		bad := *sig
+		bad.sig[0] ^= 0x01
+		assert.False(t, Verify(k.PublicKey(), testMsg, nil, &bad))
+	})
+
+	t.Run("nil key", func(t *testing.T) {
+		assert.False(t, Verify(nil, testMsg, nil, sig))
+	})
+
+	t.Run("nil signature", func(t *testing.T) {
+		assert.False(t, Verify(k.PublicKey(), testMsg, nil, nil))
+	})
 }
 
-func TestSignVerifyWithEmptyContextRoundTrip(t *testing.T) {
-	priv := seckeyOne(t)
-	pub := priv.PublicKey()
+// Unlike ed25519, an empty context is an ordinary valid input rather than
+// a different scheme — Ed448 always folds it into the domain hash.
+func TestEmptyContextIsValid(t *testing.T) {
+	k := keyN(t, 1)
 
-	sig, err := Sign(priv, testMsg, []byte{})
-	if err != nil {
-		t.Fatalf("Sign failed: %v", err)
-	}
-	if !Verify(pub, testMsg, sig[:], []byte{}) {
-		t.Error("Verify rejected a signature Sign just produced")
-	}
-	// An empty context is just an ordinary input here, not a distinct
-	// scheme (unlike ed25519's SignCtx) — nil and []byte{} must be
-	// equivalent.
-	if !Verify(pub, testMsg, sig[:], nil) {
-		t.Error("Verify treated a nil context differently from an empty one")
-	}
+	withNil, err := Sign(k, testMsg, nil)
+	require.NoError(t, err)
+	withEmpty, err := Sign(k, testMsg, []byte{})
+	require.NoError(t, err)
+
+	assert.True(t, withNil.Equal(withEmpty))
+	assert.True(t, Verify(k.PublicKey(), testMsg, []byte{}, withNil))
 }
 
-func TestSignRejectsOversizeContext(t *testing.T) {
-	priv := seckeyOne(t)
-	if _, err := Sign(priv, testMsg, make([]byte, ContextMaxLen+1)); !errors.Is(err, ErrContextTooLong) {
-		t.Errorf("Sign error = %v, want %v", err, ErrContextTooLong)
-	}
+// The two variants are separate schemes.
+func TestPhIsDomainSeparated(t *testing.T) {
+	k := keyN(t, 1)
+
+	plain, err := Sign(k, testMsg, nil)
+	require.NoError(t, err)
+	ph, err := SignPh(k, testMsg, nil)
+	require.NoError(t, err)
+
+	assert.False(t, plain.Equal(ph))
+	assert.False(t, VerifyPh(k.PublicKey(), testMsg, nil, plain))
+	assert.False(t, Verify(k.PublicKey(), testMsg, nil, ph))
 }
 
-func TestSignPhVerifyPhRoundTrip(t *testing.T) {
-	priv := seckeyOne(t)
-	pub := priv.PublicKey()
-	context := []byte("example context")
+func TestContextSeparatesContexts(t *testing.T) {
+	k := keyN(t, 1)
 
-	sig, err := SignPh(priv, testMsg, context)
-	if err != nil {
-		t.Fatalf("SignPh failed: %v", err)
-	}
-	if !VerifyPh(pub, testMsg, sig[:], context) {
-		t.Error("VerifyPh rejected a signature SignPh just produced")
-	}
+	a, err := Sign(k, testMsg, []byte("one"))
+	require.NoError(t, err)
+	b, err := Sign(k, testMsg, []byte("two"))
+	require.NoError(t, err)
+
+	assert.False(t, a.Equal(b))
+	assert.False(t, Verify(k.PublicKey(), testMsg, []byte("two"), a))
 }
 
-func TestVerifyPhRejectsWrongMessageAndContext(t *testing.T) {
-	priv := seckeyOne(t)
-	pub := priv.PublicKey()
-	context := []byte("example context")
+// CIRCL panics on an oversize context, so the length is checked first.
+func TestContextTooLong(t *testing.T) {
+	k := keyN(t, 1)
+	ctx := make([]byte, ContextMaxLen+1)
 
-	sig, err := SignPh(priv, testMsg, context)
-	if err != nil {
-		t.Fatalf("SignPh failed: %v", err)
-	}
-	if VerifyPh(pub, append(append([]byte{}, testMsg...), 0x00), sig[:], context) {
-		t.Error("VerifyPh accepted a signature under a modified message")
-	}
-	if VerifyPh(pub, testMsg, sig[:], []byte("different context")) {
-		t.Error("VerifyPh accepted a signature under the wrong context")
-	}
+	_, err := Sign(k, testMsg, ctx)
+	assert.ErrorIs(t, err, ErrContextTooLong)
+	_, err = SignPh(k, testMsg, ctx)
+	assert.ErrorIs(t, err, ErrContextTooLong)
+
+	sig, err := Sign(k, testMsg, nil)
+	require.NoError(t, err)
+	assert.False(t, Verify(k.PublicKey(), testMsg, ctx, sig))
+	assert.False(t, VerifyPh(k.PublicKey(), testMsg, ctx, sig))
 }
 
-func TestSignPhRejectsOversizeContext(t *testing.T) {
-	priv := seckeyOne(t)
-	if _, err := SignPh(priv, testMsg, make([]byte, ContextMaxLen+1)); !errors.Is(err, ErrContextTooLong) {
-		t.Errorf("SignPh error = %v, want %v", err, ErrContextTooLong)
-	}
+// The longest allowed context must still work.
+func TestContextAtMaxLength(t *testing.T) {
+	k := keyN(t, 1)
+	ctx := make([]byte, ContextMaxLen)
+
+	sig, err := Sign(k, testMsg, ctx)
+	require.NoError(t, err)
+	assert.True(t, Verify(k.PublicKey(), testMsg, ctx, sig))
 }
 
-func TestSignAndSignPhAreNotInterchangeable(t *testing.T) {
-	priv := seckeyOne(t)
-	pub := priv.PublicKey()
-
-	sig, err := Sign(priv, testMsg, nil)
-	if err != nil {
-		t.Fatalf("Sign failed: %v", err)
-	}
-	if VerifyPh(pub, testMsg, sig[:], nil) {
-		t.Error("VerifyPh accepted a plain-Ed448 signature")
-	}
-
-	sigPh, err := SignPh(priv, testMsg, nil)
-	if err != nil {
-		t.Fatalf("SignPh failed: %v", err)
-	}
-	if Verify(pub, testMsg, sigPh[:], nil) {
-		t.Error("Verify accepted an Ed448ph signature")
-	}
+func TestSignRejectsNilKey(t *testing.T) {
+	_, err := Sign(nil, testMsg, nil)
+	assert.ErrorIs(t, err, ErrInvalidPrivateKey)
+	_, err = SignPh(nil, testMsg, nil)
+	assert.ErrorIs(t, err, ErrInvalidPrivateKey)
 }

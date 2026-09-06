@@ -5,97 +5,108 @@ import (
 	ed "crypto/ed25519"
 )
 
-// EdDSA signing and verification, in the three variants RFC 8032 defines:
+// The three RFC 8032 variants:
 //
-//   - Sign/Verify: pure Ed25519. Takes the raw, arbitrary-length message
-//     directly — Ed25519 already makes two passes over it internally, so
-//     (unlike the other packages' SignDigest* functions) there is no
-//     pre-hashed-digest form to offer here; pre-hashing it yourself would
-//     just be hashing it a third time. Pure signing cannot fail (every
-//     32-byte seed and every message produce a signature), so, uniquely
-//     among every Sign* function in this library, Sign returns no error.
-//   - SignCtx/VerifyCtx: Ed25519ctx, RFC 8032's context-string variant —
-//     the same double-pass-over-the-raw-message signing, domain-separated
-//     by a context string of up to 255 bytes so the same key can't be
-//     confused across two different protocols' messages.
-//   - SignPh/VerifyPh: Ed25519ph, the prehashed variant. Here the message
-//     really has been hashed once already (SHA-512, by the caller) before
-//     it reaches this package, so the parameter is the 64-byte digest —
-//     matching the DigestXxx naming convention used elsewhere in this
-//     library, even though Ed25519ph is spelled without "Digest" in its
-//     own name.
+//   - Sign/Verify: pure Ed25519, over the raw message. Ed25519 already
+//     makes two passes over it internally, so there is no pre-hashed form
+//     to offer — hashing it yourself would only hash it a third time.
+//     Signing cannot fail, which is why Sign alone among this library's
+//     Sign functions returns no error.
+//   - SignCtx/VerifyCtx: Ed25519ctx, domain-separated by a context string
+//     so one key cannot be confused across two protocols.
+//   - SignPh/VerifyPh: Ed25519ph, where the caller has already hashed the
+//     message with SHA-512 and passes the digest.
 //
-// context is optional in SignPh/VerifyPh — pass nil or an empty slice for
-// no context string; Ed25519ph stays domain-separated from plain Ed25519
-// regardless, via its own internal flag byte. It is NOT optional in
-// SignCtx/VerifyCtx: crypto/ed25519 only selects the Ed25519ctx
-// scheme when opts.Context is non-empty, and silently falls back to plain
-// Ed25519 when it's empty — so an empty context is rejected explicitly
-// here rather than being allowed to silently produce a different scheme.
+// context is optional for the Ph variants — Ed25519ph stays separated from
+// plain Ed25519 by its own flag byte regardless — but required for the Ctx
+// ones. See ErrContextRequired.
 
-// Sign signs message with priv using pure Ed25519.
-func Sign(priv *PrivateKey, message []byte) [SignatureLen]byte {
-	return [SignatureLen]byte(ed.Sign(priv.expand(), message))
+// Sign signs msg with k using pure Ed25519.
+func Sign(k *PrivateKey, msg []byte) *Signature {
+	var s Signature
+
+	copy(s.sig[:], ed.Sign(k.expand(), msg))
+	return &s
 }
 
-// Verify reports whether sig is a valid pure-Ed25519 signature of message
-// by pub.
-func Verify(pub *PublicKey, message, sig []byte) bool {
-	return ed.Verify(pub.key[:], message, sig)
-}
-
-// SignCtx signs message with priv using Ed25519ctx, domain-separated by
-// context. context must be non-empty (see the package doc above) and at
-// most 255 bytes.
-func SignCtx(priv *PrivateKey, message, context []byte) ([SignatureLen]byte, error) {
-	if len(context) == 0 {
-		return [SignatureLen]byte{}, ErrContextRequired
-	}
-	sig, err := priv.expand().Sign(nil, message, &ed.Options{
-		Hash:    crypto.Hash(0),
-		Context: string(context),
-	})
-	if err != nil {
-		return [SignatureLen]byte{}, ErrSigningFailed
-	}
-	return [SignatureLen]byte(sig), nil
-}
-
-// VerifyCtx reports whether sig is a valid Ed25519ctx signature of
-// message by pub under context. An empty context always returns false
-// (see the package doc above) rather than falling back to verifying sig
-// as a plain-Ed25519 signature.
-func VerifyCtx(pub *PublicKey, message, context, sig []byte) bool {
-	if len(context) == 0 {
+// Verify reports whether sig is k's pure-Ed25519 signature over msg.
+func Verify(k *PublicKey, msg []byte, sig *Signature) bool {
+	if k == nil || sig == nil {
 		return false
 	}
-	err := ed.VerifyWithOptions(pub.key[:], message, sig, &ed.Options{
+	return ed.Verify(k.key[:], msg, sig.sig[:])
+}
+
+// SignCtx signs msg with k using Ed25519ctx, domain-separated by ctx. ctx
+// must be non-empty and at most ContextMaxLen bytes.
+func SignCtx(k *PrivateKey, msg, ctx []byte) (*Signature, error) {
+	var s Signature
+
+	if k == nil {
+		return nil, ErrInvalidPrivateKey
+	}
+	if len(ctx) == 0 {
+		return nil, ErrContextRequired
+	}
+
+	sig, err := k.expand().Sign(nil, msg, &ed.Options{
 		Hash:    crypto.Hash(0),
-		Context: string(context),
+		Context: string(ctx),
+	})
+	if err != nil {
+		return nil, ErrSigningFailed
+	}
+
+	copy(s.sig[:], sig)
+	return &s, nil
+}
+
+// VerifyCtx reports whether sig is k's Ed25519ctx signature over msg under
+// ctx. An empty ctx is always false rather than falling back to verifying
+// sig as a plain Ed25519 signature.
+func VerifyCtx(k *PublicKey, msg, ctx []byte, sig *Signature) bool {
+	if k == nil || sig == nil || len(ctx) == 0 {
+		return false
+	}
+
+	err := ed.VerifyWithOptions(k.key[:], msg, sig.sig[:], &ed.Options{
+		Hash:    crypto.Hash(0),
+		Context: string(ctx),
 	})
 	return err == nil
 }
 
-// SignPh signs a SHA-512 digest with priv using Ed25519ph, optionally
-// domain-separated by context. digest must be the SHA-512 hash of the
-// actual message, computed by the caller.
-func SignPh(priv *PrivateKey, digest [64]byte, context []byte) ([SignatureLen]byte, error) {
-	sig, err := priv.expand().Sign(nil, digest[:], &ed.Options{
+// SignPh signs a SHA-512 digest with k using Ed25519ph, optionally
+// domain-separated by ctx. d must be the digest of the actual message,
+// computed by the caller.
+func SignPh(k *PrivateKey, d [DigestLen]byte, ctx []byte) (*Signature, error) {
+	var s Signature
+
+	if k == nil {
+		return nil, ErrInvalidPrivateKey
+	}
+
+	sig, err := k.expand().Sign(nil, d[:], &ed.Options{
 		Hash:    crypto.SHA512,
-		Context: string(context),
+		Context: string(ctx),
 	})
 	if err != nil {
-		return [SignatureLen]byte{}, ErrSigningFailed
+		return nil, ErrSigningFailed
 	}
-	return [SignatureLen]byte(sig), nil
+
+	copy(s.sig[:], sig)
+	return &s, nil
 }
 
-// VerifyPh reports whether sig is a valid Ed25519ph signature of digest by
-// pub under context.
-func VerifyPh(pub *PublicKey, digest [64]byte, context []byte, sig []byte) bool {
-	err := ed.VerifyWithOptions(pub.key[:], digest[:], sig, &ed.Options{
+// VerifyPh reports whether sig is k's Ed25519ph signature over d under ctx.
+func VerifyPh(k *PublicKey, d [DigestLen]byte, ctx []byte, sig *Signature) bool {
+	if k == nil || sig == nil {
+		return false
+	}
+
+	err := ed.VerifyWithOptions(k.key[:], d[:], sig.sig[:], &ed.Options{
 		Hash:    crypto.SHA512,
-		Context: string(context),
+		Context: string(ctx),
 	})
 	return err == nil
 }
