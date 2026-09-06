@@ -1,86 +1,119 @@
 package secp256k1
 
 import (
+	"crypto/rand"
 	"encoding/hex"
-	"math/big"
 	"testing"
+
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
+	"github.com/decred/dcrd/dcrec/secp256k1/v4/ecdsa"
+	"github.com/stretchr/testify/require"
 )
 
-var (
-	// The order of the secp256k1 group. S values live in [1, n-1]; flipping one
-	// (n - s) turns a low-S signature into its high-S counterpart and back,
-	// which is how flipHighS below manufactures a high-S test signature without
-	// a from-scratch test vector.
-	curveOrder, _ = new(big.Int).SetString("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141", 16)
-	testMsg       = []byte("the quick brown fox jumps over the lazy dog")
-)
+// curveOrder is n, the order of the group. Every scalar must be below it.
+const curveOrder = "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"
 
-// flipHighS takes a 64-byte compact (r||s) signature — SignCompact always
-// produces the low-S form — and returns the same signature with s replaced
-// by n-s, its high-S counterpart. Applying it twice reproduces the
-// original.
-func flipHighS(t *testing.T, sig []byte) []byte {
+func mustHex(t *testing.T, s string) []byte {
 	t.Helper()
-	if len(sig) != 64 {
-		t.Fatalf("flipHighS: sig is %d bytes, want 64", len(sig))
-	}
 
-	s := new(big.Int).SetBytes(sig[32:64])
-	flipped := new(big.Int).Sub(curveOrder, s)
-	flippedBytes := flipped.FillBytes(make([]byte, 32))
-
-	out := make([]byte, 64)
-	copy(out[:32], sig[:32])
-	copy(out[32:], flippedBytes)
-	return out
-}
-
-// The expected public key for seckeyOne (private key 1) — a fixed constant
-// of the curve (it happens to equal the generator point G itself, since
-// 1*G = G, but these exist as a test vector for seckeyOne, not as a
-// reference to G), shared across this package's test files. Byte literals
-// rather than a hex string so there is no decode step (and, for the 65-byte
-// uncompressed form, no string concatenation) standing between this and the
-// actual bytes under test.
-var (
-	seckeyOnePubkeyCompressed = []byte{
-		0x02, 0x79, 0xbe, 0x66, 0x7e, 0xf9, 0xdc, 0xbb,
-		0xac, 0x55, 0xa0, 0x62, 0x95, 0xce, 0x87, 0x0b,
-		0x07, 0x02, 0x9b, 0xfc, 0xdb, 0x2d, 0xce, 0x28,
-		0xd9, 0x59, 0xf2, 0x81, 0x5b, 0x16, 0xf8, 0x17,
-		0x98,
-	}
-	seckeyOnePubkeyUncompressed = []byte{
-		0x04, 0x79, 0xbe, 0x66, 0x7e, 0xf9, 0xdc, 0xbb,
-		0xac, 0x55, 0xa0, 0x62, 0x95, 0xce, 0x87, 0x0b,
-		0x07, 0x02, 0x9b, 0xfc, 0xdb, 0x2d, 0xce, 0x28,
-		0xd9, 0x59, 0xf2, 0x81, 0x5b, 0x16, 0xf8, 0x17,
-		0x98, 0x48, 0x3a, 0xda, 0x77, 0x26, 0xa3, 0xc4,
-		0x65, 0x5d, 0xa4, 0xfb, 0xfc, 0x0e, 0x11, 0x08,
-		0xa8, 0xfd, 0x17, 0xb4, 0x48, 0xa6, 0x85, 0x54,
-		0x19, 0x9c, 0x47, 0xd0, 0x8f, 0xfb, 0x10, 0xd4,
-		0xb8,
-	}
-)
-
-func mustDecodeHex(t *testing.T, s string) []byte {
-	t.Helper()
 	b, err := hex.DecodeString(s)
-	if err != nil {
-		t.Fatalf("bad hex in test case: %v", err)
-	}
+	require.NoError(t, err)
 	return b
 }
 
-// seckeyOne returns the PrivateKey for scalar 1, whose public key is the
-// generator point — the simplest non-zero test vector available.
-func seckeyOne(t *testing.T) *PrivateKey {
+// scalarN is the big-endian encoding of the small scalar n.
+func scalarN(t *testing.T, n byte) []byte {
 	t.Helper()
-	b := make([]byte, 32)
-	b[31] = 1
-	priv, err := PrivateKeyFromBytes(b)
-	if err != nil {
-		t.Fatalf("PrivateKeyFromBytes failed for a valid key: %v", err)
+
+	b := make([]byte, SeckeyLen)
+	b[SeckeyLen-1] = n
+	return b
+}
+
+func randSeckey(t *testing.T) []byte {
+	t.Helper()
+
+	for {
+		b := make([]byte, SeckeyLen)
+		_, err := rand.Read(b)
+		require.NoError(t, err)
+
+		if _, err := PrivateKeyFromBytes(b); err == nil {
+			return b
+		}
 	}
-	return priv
+}
+
+func randDigest(t *testing.T) []byte {
+	t.Helper()
+
+	d := make([]byte, DigestLen)
+	_, err := rand.Read(d)
+	require.NoError(t, err)
+	return d
+}
+
+func randKeyPair(t *testing.T) (*PrivateKey, []byte) {
+	t.Helper()
+
+	b := randSeckey(t)
+	k, err := PrivateKeyFromBytes(b)
+	require.NoError(t, err)
+	return k, b
+}
+
+func testSignature(t *testing.T) (*Signature, *PrivateKey, []byte) {
+	t.Helper()
+
+	k, _ := randKeyPair(t)
+	d := randDigest(t)
+
+	sig, err := Sign(k, d)
+	require.NoError(t, err)
+	return sig, k, d
+}
+
+// isHighS reports whether s is in the upper half of the order.
+func isHighS(t *testing.T, sig *Signature) bool {
+	t.Helper()
+
+	_, s := sig.scalars()
+	return s.IsOverHalfOrder()
+}
+
+// negateS returns sig with s replaced by n-s: the malleated form Sign never
+// produces and Verify must reject.
+func negateS(t *testing.T, sig *Signature) *Signature {
+	t.Helper()
+
+	var s secp256k1.ModNScalar
+
+	out := *sig
+	s.SetBytes(&sig.s)
+	s.Negate()
+	s.PutBytes(&out.s)
+	return &out
+}
+
+// recoverAllowingHighS is Recover without the high-s rejection, so a test
+// can observe what a malleated signature actually recovers to.
+func recoverAllowingHighS(t *testing.T, d []byte, sig *Signature, id byte) (*PublicKey, error) {
+	t.Helper()
+
+	var k [PubkeyCompressedLen]byte
+
+	b := make([]byte, 1+SignatureCompactLen)
+	b[0] = compactRecoveryBase + id
+	copy(b[1:], sig.r[:])
+	copy(b[1+SignatureScalarLen:], sig.s[:])
+
+	p, _, err := ecdsa.RecoverCompact(b, d)
+	if err != nil {
+		return nil, err
+	}
+
+	copy(k[:], p.SerializeCompressed())
+	return &PublicKey{
+		key: k,
+	}, nil
 }
