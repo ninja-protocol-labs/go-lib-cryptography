@@ -1,9 +1,11 @@
 package md5
 
 import (
-	"bytes"
 	"encoding/hex"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // The RFC 1321 §A.5 test suite, regenerated with OpenSSL rather than taken
@@ -40,69 +42,63 @@ func mustDecodeHex(t *testing.T, s string) []byte {
 	return b
 }
 
-func TestSumMatchesKnownAnswers(t *testing.T) {
+func TestHashMatchesKnownAnswers(t *testing.T) {
 	for _, v := range vectors {
 		t.Run(v.in, func(t *testing.T) {
 			want := mustDecodeHex(t, v.want)
-			if len(want) != Size {
-				t.Fatalf("vector length = %d, want %d", len(want), Size)
-			}
-			if got := Sum([]byte(v.in)); !bytes.Equal(got[:], want) {
-				t.Errorf("Sum(%q) = %x, want %x", v.in, got, want)
-			}
+			require.Len(t, want, Size, "bad vector")
+
+			got := Hash([]byte(v.in)).Bytes()
+			assert.Equal(t, want, got[:])
 		})
 	}
 }
 
-func TestSumOfEmptyInput(t *testing.T) {
-	want := mustDecodeHex(t, vectors[0].want)
-	if got := Sum(nil); !bytes.Equal(got[:], want) {
-		t.Errorf("Sum(nil) = %x, want %x", got, want)
-	}
-	if Sum(nil) != Sum([]byte{}) {
-		t.Error("Sum(nil) != Sum(empty slice)")
-	}
+func TestHashOfEmptyInput(t *testing.T) {
+	got := Hash(nil).Bytes()
+	assert.Equal(t, mustDecodeHex(t, vectors[0].want), got[:])
+	assert.True(t, Hash(nil).Equal(Hash([]byte{})))
 }
 
 func TestStreamingAgreesWithOneShot(t *testing.T) {
 	for _, v := range vectors {
 		t.Run(v.in, func(t *testing.T) {
 			h := New()
-			if h.Size() != Size {
-				t.Errorf("Size() = %d, want %d", h.Size(), Size)
-			}
-			if h.BlockSize() != BlockSize {
-				t.Errorf("BlockSize() = %d, want %d", h.BlockSize(), BlockSize)
-			}
+			assert.Equal(t, Size, h.Size())
+			assert.Equal(t, BlockSize, h.BlockSize())
+
 			// A byte at a time, so the buffering has to reassemble blocks.
 			for i := range len(v.in) {
-				h.Write([]byte{v.in[i]})
+				_, err := h.Write([]byte{v.in[i]})
+				require.NoError(t, err)
 			}
-			if got, want := h.Sum(nil), Sum([]byte(v.in)); !bytes.Equal(got, want[:]) {
-				t.Errorf("streaming = %x, one-shot = %x", got, want)
-			}
+
+			want := Hash([]byte(v.in)).Bytes()
+			assert.Equal(t, want[:], h.Sum(nil))
 		})
 	}
 }
 
 func TestStreamingResetIsReusable(t *testing.T) {
 	h := New()
-	h.Write([]byte("something else entirely"))
+	_, err := h.Write([]byte("something else entirely"))
+	require.NoError(t, err)
 	h.Reset()
-	h.Write([]byte("abc"))
-	if got, want := h.Sum(nil), Sum([]byte("abc")); !bytes.Equal(got, want[:]) {
-		t.Errorf("after Reset = %x, want %x", got, want)
-	}
+	_, err = h.Write([]byte("abc"))
+	require.NoError(t, err)
+
+	want := Hash([]byte("abc")).Bytes()
+	assert.Equal(t, want[:], h.Sum(nil))
 }
 
+// Guards against a wiring mistake that returns a constant: every vector
+// must hash to something distinct.
 func TestDigestsDifferAcrossInputs(t *testing.T) {
-	// Guards against a wiring mistake that returns a constant.
 	seen := make(map[[Size]byte]string, len(vectors))
 	for _, v := range vectors {
-		d := Sum([]byte(v.in))
-		if prev, dup := seen[d]; dup {
-			t.Errorf("%q and %q hash to the same digest", prev, v.in)
-		}
+		d := Hash([]byte(v.in)).Bytes()
+		prev, dup := seen[d]
+		assert.False(t, dup, "%q and %q hash to the same digest", prev, v.in)
 		seen[d] = v.in
 	}
 }

@@ -33,21 +33,15 @@
 // of it forwards to crypto/sha3.
 //
 // Upstream offers a streaming hash.Hash and no one-shot function, so
-// Sum256 and Sum512 below are this package's, written to match the shape
-// every other hash in this module has: a fixed-size array out, no
-// allocation to think about at the call site.
+// Hash256 and Hash512 here are this package's own, written to match the
+// shape every other hash in this module has: a Digest type per length, so
+// that a Keccak-256 digest cannot be passed where a SHA3-256 one belongs.
 //
 // # Length extension
 //
 // Keccak is a sponge, like SHA-3, so it is not length-extendable the way
 // SHA-256 is. Use HMAC for a MAC regardless.
 package keccak
-
-import (
-	"hash"
-
-	"golang.org/x/crypto/sha3"
-)
 
 const (
 	// Size256 is the byte length of a Keccak-256 digest.
@@ -66,34 +60,3 @@ const (
 
 // stateSize is the Keccak-f[1600] permutation's state, in bytes.
 const stateSize = 200
-
-// Sum256 returns the Keccak-256 digest of data — Ethereum's keccak256,
-// not SHA3-256.
-func Sum256(data []byte) [Size256]byte {
-	var out [Size256]byte
-	h := sha3.NewLegacyKeccak256()
-	h.Write(data)
-	h.Sum(out[:0])
-	return out
-}
-
-// Sum512 returns the Keccak-512 digest of data.
-func Sum512(data []byte) [Size512]byte {
-	var out [Size512]byte
-	h := sha3.NewLegacyKeccak512()
-	h.Write(data)
-	h.Sum(out[:0])
-	return out
-}
-
-// New256 returns a streaming Keccak-256 hash, for data that does not
-// arrive in one piece. Its Sum appends to the slice it is given, unlike
-// Sum256's array return.
-func New256() hash.Hash {
-	return sha3.NewLegacyKeccak256()
-}
-
-// New512 returns a streaming Keccak-512 hash.
-func New512() hash.Hash {
-	return sha3.NewLegacyKeccak512()
-}

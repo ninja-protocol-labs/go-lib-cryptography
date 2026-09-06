@@ -1,29 +1,25 @@
-package sha2
+package sha3
 
 import (
-	"crypto/sha512"
+	"crypto/sha3"
 	"hash"
 
 	"github.com/ninja-protocol-labs/go-lib-cryptography/encoding"
 )
 
-// Digest384 is a SHA-384 digest.
+// Digest384 is a SHA3-384 digest.
 type Digest384 struct {
 	b [Size384]byte
 }
 
-// Hash384 returns the SHA-384 digest of data.
-//
-// SHA-384 is SHA-512 truncated to 48 bytes from a different initial
-// state. It withholds a quarter of the state, which is not enough to
-// stop a length-extension attack.
+// Hash384 returns the SHA3-384 digest of data.
 func Hash384(data []byte) *Digest384 {
 	return &Digest384{
-		b: sha512.Sum384(data),
+		b: sha3.Sum384(data),
 	}
 }
 
-// Digest384FromBytes wraps bytes that are already a SHA-384 digest, as
+// Digest384FromBytes wraps bytes that are already a SHA3-384 digest, as
 // one read off the wire or out of storage.
 func Digest384FromBytes(b []byte) (*Digest384, error) {
 	if len(b) != Size384 {
@@ -35,11 +31,11 @@ func Digest384FromBytes(b []byte) (*Digest384, error) {
 	}, nil
 }
 
-// New384 returns a streaming SHA-384 hash, for data that does not
-// arrive in one piece. Its Sum appends to the slice it is given, unlike
-// Hash384's Digest384.
+// New384 returns a streaming SHA3-384 hash, for data that does not arrive
+// in one piece. Its Sum appends to the slice it is given, unlike Hash384's
+// Digest384.
 func New384() hash.Hash {
-	return sha512.New384()
+	return sha3.New384()
 }
 
 func (d *Digest384) Bytes() [Size384]byte {

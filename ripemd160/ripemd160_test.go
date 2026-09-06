@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"encoding/hex"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // The test vectors published with RIPEMD-160 itself (Dobbertin, Bosselaers
@@ -37,96 +40,82 @@ func mustDecodeHex(t *testing.T, s string) []byte {
 	return b
 }
 
-func TestSumMatchesKnownAnswers(t *testing.T) {
+func TestHashMatchesKnownAnswers(t *testing.T) {
 	for _, v := range vectors {
 		t.Run(v.in, func(t *testing.T) {
 			want := mustDecodeHex(t, v.want)
-			if len(want) != Size {
-				t.Fatalf("vector length = %d, want %d", len(want), Size)
-			}
-			if got := Sum([]byte(v.in)); !bytes.Equal(got[:], want) {
-				t.Errorf("Sum(%q) = %x, want %x", v.in, got, want)
-			}
+			require.Len(t, want, Size, "bad vector")
+
+			got := Hash([]byte(v.in)).Bytes()
+			assert.Equal(t, want, got[:])
 		})
 	}
 }
 
-func TestSumOfAMillionAs(t *testing.T) {
-	// The suite's long case. Also the only one here that exercises the
-	// block counter past a handful of iterations.
+// The suite's long case, and the only one here that exercises the block
+// counter past a handful of iterations.
+func TestHashOfAMillionAs(t *testing.T) {
 	in := bytes.Repeat([]byte{'a'}, 1_000_000)
-	want := mustDecodeHex(t, millionAs)
-	if got := Sum(in); !bytes.Equal(got[:], want) {
-		t.Errorf("Sum(a*1e6) = %x, want %x", got, want)
-	}
+
+	got := Hash(in).Bytes()
+	assert.Equal(t, mustDecodeHex(t, millionAs), got[:])
 }
 
-func TestSumOfEmptyInput(t *testing.T) {
-	want := mustDecodeHex(t, vectors[0].want)
-	if got := Sum(nil); !bytes.Equal(got[:], want) {
-		t.Errorf("Sum(nil) = %x, want %x", got, want)
-	}
-	if Sum(nil) != Sum([]byte{}) {
-		t.Error("Sum(nil) != Sum(empty slice)")
-	}
+// Hash writes into b[:0], relying on append not reallocating when the
+// capacity is exactly the digest length. If that stopped holding, the
+// digest would come back all zero.
+func TestHashDoesNotAliasOrOverrun(t *testing.T) {
+	d := Hash([]byte("abc"))
+
+	assert.False(t, d.IsZero())
+	assert.True(t, d.Equal(Hash([]byte("abc"))))
+}
+
+func TestHashOfEmptyInput(t *testing.T) {
+	got := Hash(nil).Bytes()
+	assert.Equal(t, mustDecodeHex(t, vectors[0].want), got[:])
+	assert.True(t, Hash(nil).Equal(Hash([]byte{})))
 }
 
 func TestStreamingAgreesWithOneShot(t *testing.T) {
-	// Sum is this package's own, built on the streaming hash upstream
-	// provides, so unlike a re-exported one-shot this is checking code we
-	// wrote.
 	for _, v := range vectors {
 		t.Run(v.in, func(t *testing.T) {
 			h := New()
-			if h.Size() != Size {
-				t.Errorf("Size() = %d, want %d", h.Size(), Size)
-			}
-			if h.BlockSize() != BlockSize {
-				t.Errorf("BlockSize() = %d, want %d", h.BlockSize(), BlockSize)
-			}
-			// Byte at a time, so the buffering has to reassemble blocks.
+			assert.Equal(t, Size, h.Size())
+			assert.Equal(t, BlockSize, h.BlockSize())
+
+			// A byte at a time, so the buffering has to reassemble blocks.
 			for i := range len(v.in) {
-				h.Write([]byte{v.in[i]})
+				_, err := h.Write([]byte{v.in[i]})
+				require.NoError(t, err)
 			}
-			if got, want := h.Sum(nil), Sum([]byte(v.in)); !bytes.Equal(got, want[:]) {
-				t.Errorf("streaming = %x, one-shot = %x", got, want)
-			}
+
+			want := Hash([]byte(v.in)).Bytes()
+			assert.Equal(t, want[:], h.Sum(nil))
 		})
 	}
 }
 
 func TestStreamingResetIsReusable(t *testing.T) {
 	h := New()
-	h.Write([]byte("something else entirely"))
+	_, err := h.Write([]byte("something else entirely"))
+	require.NoError(t, err)
 	h.Reset()
-	h.Write([]byte("abc"))
-	if got, want := h.Sum(nil), Sum([]byte("abc")); !bytes.Equal(got, want[:]) {
-		t.Errorf("after Reset = %x, want %x", got, want)
-	}
+	_, err = h.Write([]byte("abc"))
+	require.NoError(t, err)
+
+	want := Hash([]byte("abc")).Bytes()
+	assert.Equal(t, want[:], h.Sum(nil))
 }
 
-func TestSumDoesNotAliasOrOverrun(t *testing.T) {
-	// Sum writes into out[:0], relying on append not reallocating when the
-	// capacity is exactly the digest length. If that stopped holding, the
-	// returned array would be all zero rather than the digest.
-	got := Sum([]byte("abc"))
-	if got == ([Size]byte{}) {
-		t.Fatal("Sum returned an all-zero array")
-	}
-	if Sum([]byte("abc")) != got {
-		t.Error("two calls to Sum disagreed")
-	}
-}
-
+// Guards against a wiring mistake that returns a constant: every vector
+// must hash to something distinct.
 func TestDigestsDifferAcrossInputs(t *testing.T) {
-	// Guards against a wiring mistake that returns a constant: every
-	// vector must hash to something distinct.
 	seen := make(map[[Size]byte]string, len(vectors))
 	for _, v := range vectors {
-		d := Sum([]byte(v.in))
-		if prev, dup := seen[d]; dup {
-			t.Errorf("%q and %q hash to the same digest", prev, v.in)
-		}
+		d := Hash([]byte(v.in)).Bytes()
+		prev, dup := seen[d]
+		assert.False(t, dup, "%q and %q hash to the same digest", prev, v.in)
 		seen[d] = v.in
 	}
 }

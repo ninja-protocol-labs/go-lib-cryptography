@@ -65,11 +65,11 @@ func TestDeriveKeyIsItsOwnMode(t *testing.T) {
 	material := vectorInput(64)
 	derived := DeriveKey(vectorContext, material)
 
-	if plain := Sum256(material); derived == plain {
+	if plain := Hash256(material).Bytes(); derived == plain {
 		t.Error("derive_key output matched a plain hash of the same material")
 	}
 	key := vectorKeyArray(t)
-	if keyed := SumKeyed256(key, material); derived == keyed {
+	if keyed := HashKeyed256(key, material).Bytes(); derived == keyed {
 		t.Error("derive_key output matched a keyed hash of the same material")
 	}
 }

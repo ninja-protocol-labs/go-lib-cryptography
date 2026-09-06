@@ -11,7 +11,7 @@ var testMsg = []byte("abc")
 // The expected outputs for testMsg. Produced with OpenSSL, not with the
 // standard library this package wraps: hashing with crypto/sha3 and
 // comparing against crypto/sha3 would only prove the wrapper is
-// self-consistent, not that Sum256 is wired to SHA3-256.
+// self-consistent, not that Hash256 is wired to SHA3-256.
 const (
 	abcSHA3_224 = "e642824c3f8cf24ad09234ee7d3c766fc9a3a5168d0c94ad73b46fdf"
 	abcSHA3_256 = "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532"
