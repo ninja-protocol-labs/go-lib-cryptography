@@ -1,290 +1,383 @@
 package bls12381
 
-import "testing"
+import (
+	"bytes"
+	"github.com/stretchr/testify/assert"
+	"testing"
+)
 
 func TestG1PointFromCompressedRoundTrip(t *testing.T) {
-	priv := privKeyN(t, 40)
-	pub := priv.PublicKeyMinPk()
-
+	pub := privKeyMinPkN(t, 40).PublicKey()
 	b := pub.Bytes()
 	p, err := G1PointFromCompressed(b[:])
 	if err != nil {
 		t.Fatalf("G1PointFromCompressed failed: %v", err)
 	}
-	if !p.Equal(G1Point(pub.point)) {
-		t.Error("G1PointFromCompressed(pub.Bytes()) != pub's point")
+	if p.Bytes() != pub.Bytes() {
+		t.Error("G1PointFromCompressed(pub.Bytes()).Bytes() != pub.Bytes()")
 	}
 }
 
-func TestG1PointFromCompressedRejectsGarbage(t *testing.T) {
-	garbage := make([]byte, 48)
-	for i := range garbage {
-		garbage[i] = 0xff
+func TestG2PointFromCompressedRoundTrip(t *testing.T) {
+	pub := privKeyMinSigN(t, 40).PublicKey()
+	b := pub.Bytes()
+	p, err := G2PointFromCompressed(b[:])
+	if err != nil {
+		t.Fatalf("G2PointFromCompressed failed: %v", err)
 	}
-	if _, err := G1PointFromCompressed(garbage); err == nil {
+	if p.Bytes() != pub.Bytes() {
+		t.Error("G2PointFromCompressed(pub.Bytes()).Bytes() != pub.Bytes()")
+	}
+}
+
+func TestPointFromCompressedRejectsGarbage(t *testing.T) {
+	if _, err := G1PointFromCompressed(bytes.Repeat([]byte{0xff}, PubkeyMinPkLen)); err == nil {
 		t.Error("G1PointFromCompressed accepted garbage")
+	}
+	if _, err := G2PointFromCompressed(bytes.Repeat([]byte{0xff}, PubkeyMinSigLen)); err == nil {
+		t.Error("G2PointFromCompressed accepted garbage")
+	}
+	if _, err := G1PointFromCompressed(nil); err == nil {
+		t.Error("G1PointFromCompressed accepted an empty input")
 	}
 }
 
 func TestG1ArithmeticAgreesWithScalarMult(t *testing.T) {
 	g := G1Generator()
 	doubled := g.Double()
-	added := g.Add(g)
-	if doubled != added {
+	if added := g.Add(g); doubled != added {
 		t.Error("G1Generator().Double() != G1Generator().Add(itself)")
 	}
-
-	mult := g.Mul(scalarN(2))
-	if mult != doubled {
+	if mult := g.Mul(scalarArrN(t, 2)); mult != doubled {
 		t.Error("G1Generator().Mul(2) != G1Generator().Double()")
 	}
-}
-
-func TestG1Neg(t *testing.T) {
-	g := G1Generator()
-	negG := g.Neg()
-	if g.Equal(negG) {
-		t.Error("G1Point.Neg() == itself")
-	}
-	if !g.Add(negG).IsInfinity() {
-		t.Error("G + (-G) is not the point at infinity")
+	// 3G = 2G + G, reached two ways.
+	if g.Mul(scalarArrN(t, 3)) != doubled.Add(g) {
+		t.Error("G1Generator().Mul(3) != 2G + G")
 	}
 }
 
 func TestG2ArithmeticAgreesWithScalarMult(t *testing.T) {
 	g := G2Generator()
 	doubled := g.Double()
-	added := g.Add(g)
-	if doubled != added {
+	if added := g.Add(g); doubled != added {
 		t.Error("G2Generator().Double() != G2Generator().Add(itself)")
 	}
-
-	mult := g.Mul(scalarN(2))
-	if mult != doubled {
+	if mult := g.Mul(scalarArrN(t, 2)); mult != doubled {
 		t.Error("G2Generator().Mul(2) != G2Generator().Double()")
 	}
 }
 
-func TestHashToG1AndG2AreOnCurveAndDeterministic(t *testing.T) {
-	dst := []byte(DefaultDSTMinPk)
-	a := HashToG1(testMsg, dst)
-	b := HashToG1(testMsg, dst)
+func TestNeg(t *testing.T) {
+	g1 := G1Generator()
+	if g1.Equal(g1.Neg()) {
+		t.Error("G1Point.Neg() == itself")
+	}
+	if !g1.Add(g1.Neg()).IsInfinity() {
+		t.Error("G + (-G) is not the point at infinity in G1")
+	}
+
+	g2 := G2Generator()
+	if !g2.Add(g2.Neg()).IsInfinity() {
+		t.Error("G + (-G) is not the point at infinity in G2")
+	}
+}
+
+func TestHashToCurveIsDeterministicAndDomainSeparated(t *testing.T) {
+	dst := []byte(DefaultDSTMinSig)
+
+	a, err := HashToG1(testMsg, dst)
+	if err != nil {
+		t.Fatalf("HashToG1 failed: %v", err)
+	}
+	b, err := HashToG1(testMsg, dst)
+	if err != nil {
+		t.Fatalf("HashToG1 failed: %v", err)
+	}
 	if a != b {
 		t.Error("HashToG1 is not deterministic")
 	}
 
-	dst2 := []byte(DefaultDSTMinSig)
-	c := HashToG2(testMsg, dst2)
-	d := HashToG2(testMsg, dst2)
+	other, err := HashToG1(testMsg, []byte("A_DIFFERENT_DST_"))
+	if err != nil {
+		t.Fatalf("HashToG1 failed: %v", err)
+	}
+	if a == other {
+		t.Error("HashToG1 ignored the domain separation tag")
+	}
+
+	c, err := HashToG2(testMsg, []byte(DefaultDSTMinPk))
+	if err != nil {
+		t.Fatalf("HashToG2 failed: %v", err)
+	}
+	d, err := HashToG2(testMsg, []byte(DefaultDSTMinPk))
+	if err != nil {
+		t.Fatalf("HashToG2 failed: %v", err)
+	}
 	if c != d {
 		t.Error("HashToG2 is not deterministic")
 	}
 }
 
+func TestEncodeToCurveDiffersFromHashToCurve(t *testing.T) {
+	dst := []byte(DefaultDSTMinSig)
+	h, err := HashToG1(testMsg, dst)
+	if err != nil {
+		t.Fatalf("HashToG1 failed: %v", err)
+	}
+	e, err := EncodeToG1(testMsg, dst)
+	if err != nil {
+		t.Fatalf("EncodeToG1 failed: %v", err)
+	}
+	if h == e {
+		t.Error("EncodeToG1 and HashToG1 produced the same point")
+	}
+	if _, err := EncodeToG2(testMsg, dst); err != nil {
+		t.Fatalf("EncodeToG2 failed: %v", err)
+	}
+}
+
+func TestHashToCurveRejectsOverlongDST(t *testing.T) {
+	dst := bytes.Repeat([]byte{'x'}, 256)
+	if _, err := HashToG1(testMsg, dst); err == nil {
+		t.Error("HashToG1 accepted a 256-byte DST")
+	}
+	if _, err := HashToG2(testMsg, dst); err == nil {
+		t.Error("HashToG2 accepted a 256-byte DST")
+	}
+	if _, err := EncodeToG1(testMsg, dst); err == nil {
+		t.Error("EncodeToG1 accepted a 256-byte DST")
+	}
+	if _, err := EncodeToG2(testMsg, dst); err == nil {
+		t.Error("EncodeToG2 accepted a 256-byte DST")
+	}
+}
+
 func TestGTAlgebra(t *testing.T) {
-	f := MillerLoop(G2Generator(), G1Generator())
-	f = FinalExp(f)
+	f, err := Pair(G2Generator(), G1Generator())
+	if err != nil {
+		t.Fatalf("Pair failed: %v", err)
+	}
 
 	one := GTOne()
 	if !one.IsOne() {
 		t.Error("GTOne().IsOne() is false")
 	}
 	if f.IsOne() {
-		t.Error("a real final-exponentiated Miller loop result reported as one")
+		t.Error("e(G1, G2) reported as one")
 	}
 	if !f.InGroup() {
-		t.Error("a real final-exponentiated Miller loop result reported as not in GT")
+		t.Error("e(G1, G2) reported as not in GT")
 	}
-
-	if sqr, mulSelf := f.Sqr(), f.Mul(f); sqr != mulSelf {
+	if f.Sqr() != f.Mul(f) {
 		t.Error("GT.Sqr() != GT.Mul(itself)")
 	}
-	if prod := f.Mul(f.Inverse()); prod != one {
+	if f.Mul(f.Inverse()) != one {
 		t.Error("f.Mul(f.Inverse()) != GTOne()")
 	}
-	if !FinalVerify(f, f) {
-		t.Error("FinalVerify(f, f) is false")
+}
+
+func TestGTBytesRoundTrip(t *testing.T) {
+	f, err := Pair(G2Generator(), G1Generator())
+	if err != nil {
+		t.Fatalf("Pair failed: %v", err)
+	}
+	b := f.Bytes()
+	same, err := GTFromBytes(b[:])
+	if err != nil {
+		t.Fatalf("GTFromBytes failed: %v", err)
+	}
+	if !f.Equal(same) {
+		t.Error("GTFromBytes(f.Bytes()) != f")
+	}
+	if _, err := GTFromBytes(nil); err == nil {
+		t.Error("GTFromBytes accepted an empty input")
+	}
+}
+
+func TestPairIsMillerLoopThenFinalExp(t *testing.T) {
+	g1, g2 := G1Generator(), G2Generator()
+	direct, err := Pair(g2, g1)
+	if err != nil {
+		t.Fatalf("Pair failed: %v", err)
+	}
+	loop, err := MillerLoop(g2, g1)
+	if err != nil {
+		t.Fatalf("MillerLoop failed: %v", err)
+	}
+	if !direct.Equal(FinalExp(loop)) {
+		t.Error("Pair != FinalExp(MillerLoop)")
+	}
+}
+
+func TestPairingBilinearity(t *testing.T) {
+	// e(a*G1, b*G2) == e(G1, G2)^(a*b), checked as e(3G1, 5G2) ==
+	// e(15G1, G2) == e(G1, 15G2).
+	g1, g2 := G1Generator(), G2Generator()
+
+	lhs, err := Pair(g2.Mul(scalarArrN(t, 5)), g1.Mul(scalarArrN(t, 3)))
+	if err != nil {
+		t.Fatalf("Pair failed: %v", err)
+	}
+	viaG1, err := Pair(g2, g1.Mul(scalarArrN(t, 15)))
+	if err != nil {
+		t.Fatalf("Pair failed: %v", err)
+	}
+	viaG2, err := Pair(g2.Mul(scalarArrN(t, 15)), g1)
+	if err != nil {
+		t.Fatalf("Pair failed: %v", err)
+	}
+
+	if !lhs.Equal(viaG1) {
+		t.Error("e(3G1, 5G2) != e(15G1, G2)")
+	}
+	if !lhs.Equal(viaG2) {
+		t.Error("e(3G1, 5G2) != e(G1, 15G2)")
 	}
 }
 
 func TestMillerLoopAgreesWithLinesPrecompute(t *testing.T) {
 	g1, g2 := G1Generator(), G2Generator()
-	direct := MillerLoop(g2, g1)
-	viaLines := MillerLoopLines(PrecomputeLines(g2), g1)
-	if !direct.Equal(viaLines) {
-		t.Error("MillerLoop(G2, G1) != MillerLoopLines(PrecomputeLines(G2), G1)")
+	direct, err := MillerLoop(g2, g1)
+	if err != nil {
+		t.Fatalf("MillerLoop failed: %v", err)
+	}
+	viaLines, err := MillerLoopLines(PrecomputeLines(g2), g1)
+	if err != nil {
+		t.Fatalf("MillerLoopLines failed: %v", err)
+	}
+	// The two loops accumulate the same pairing but not necessarily the
+	// same 𝔽p¹² representative, so they are compared after the final
+	// exponentiation — which is what FinalVerify does.
+	if !FinalVerify(direct, viaLines) {
+		t.Error("MillerLoop and MillerLoopLines disagree after FinalExp")
 	}
 }
 
 func TestMillerLoopNAgreesWithGTMul(t *testing.T) {
 	g1, g2 := G1Generator(), G2Generator()
-	priv := privKeyN(t, 41)
-	pkA := G1Point(priv.PublicKeyMinPk().point)
+	pkBytes := privKeyMinPkN(t, 41).PublicKey().Bytes()
+	pkA, err := G1PointFromCompressed(pkBytes[:])
+	if err != nil {
+		t.Fatalf("G1PointFromCompressed failed: %v", err)
+	}
 
-	loop1 := MillerLoop(g2, g1)
-	loop2 := MillerLoop(g2, pkA)
-	product := loop1.Mul(loop2)
+	loop1, err := MillerLoop(g2, g1)
+	if err != nil {
+		t.Fatalf("MillerLoop failed: %v", err)
+	}
+	loop2, err := MillerLoop(g2, pkA)
+	if err != nil {
+		t.Fatalf("MillerLoop failed: %v", err)
+	}
 
 	batched, err := MillerLoopN([]G2Point{g2, g2}, []G1Point{g1, pkA})
 	if err != nil {
 		t.Fatalf("MillerLoopN failed: %v", err)
 	}
-	if !product.Equal(batched) {
+	if !loop1.Mul(loop2).Equal(batched) {
 		t.Error("MillerLoop(q,p1)*MillerLoop(q,p2) != MillerLoopN([q,q],[p1,p2])")
 	}
 }
 
-func TestMillerLoopNRejectsLengthMismatch(t *testing.T) {
-	if _, err := MillerLoopN([]G2Point{G2Generator()}, nil); err == nil {
-		t.Error("MillerLoopN accepted mismatched qs/ps lengths")
-	}
-}
-
-func TestPairingAggregatePkInG1AndFinalVerify(t *testing.T) {
-	priv := privKeyN(t, 42)
-	pub := G1Point(priv.PublicKeyMinPk().point)
-	sigBytes := SignMinPk(priv, testMsg)
-	sig, err := G2PointFromCompressed(sigBytes[:])
+func TestPairNAgreesWithGTMul(t *testing.T) {
+	g1, g2 := G1Generator(), G2Generator()
+	single, err := Pair(g2, g1)
 	if err != nil {
-		t.Fatalf("G2PointFromCompressed failed: %v", err)
+		t.Fatalf("Pair failed: %v", err)
 	}
-
-	p := NewPairing(true, []byte(DefaultDSTMinPk))
-	if err := p.AggregatePkInG1(pub, &sig, testMsg); err != nil {
-		t.Fatalf("AggregatePkInG1 failed: %v", err)
-	}
-	p.Commit()
-	if !p.FinalVerify(nil) {
-		t.Error("Pairing.FinalVerify rejected a genuine signature")
-	}
-}
-
-func TestPairingAggregatePkInG1RejectsWrongMessage(t *testing.T) {
-	priv := privKeyN(t, 43)
-	pub := G1Point(priv.PublicKeyMinPk().point)
-	sigBytes := SignMinPk(priv, testMsg)
-	sig, err := G2PointFromCompressed(sigBytes[:])
+	batched, err := PairN([]G2Point{g2, g2}, []G1Point{g1, g1})
 	if err != nil {
-		t.Fatalf("G2PointFromCompressed failed: %v", err)
+		t.Fatalf("PairN failed: %v", err)
 	}
-
-	p := NewPairing(true, []byte(DefaultDSTMinPk))
-	if err := p.AggregatePkInG1(pub, &sig, []byte("wrong message")); err != nil {
-		t.Fatalf("AggregatePkInG1 failed: %v", err)
-	}
-	p.Commit()
-	if p.FinalVerify(nil) {
-		t.Error("Pairing.FinalVerify accepted a signature over the wrong message")
+	if !single.Sqr().Equal(batched) {
+		t.Error("PairN([q,q],[p,p]) != Pair(q,p)²")
 	}
 }
 
-func TestPairingSeparateGtsig(t *testing.T) {
-	priv := privKeyN(t, 44)
-	pub := G1Point(priv.PublicKeyMinPk().point)
-	sig := SignMinPk(priv, testMsg)
-	sigPoint, err := G2PointFromCompressed(sig[:])
+func TestPairingCheck(t *testing.T) {
+	// e(G1, G2) * e(-G1, G2) == 1.
+	g1, g2 := G1Generator(), G2Generator()
+	ok, err := PairingCheck([]G2Point{g2, g2}, []G1Point{g1, g1.Neg()})
 	if err != nil {
-		t.Fatalf("G2PointFromCompressed failed: %v", err)
+		t.Fatalf("PairingCheck failed: %v", err)
 	}
-	gtsig := AggregatedInG2(sigPoint)
+	if !ok {
+		t.Error("PairingCheck rejected e(G1,G2)*e(-G1,G2) == 1")
+	}
 
-	p := NewPairing(true, []byte(DefaultDSTMinPk))
-	if err := p.AggregatePkInG1(pub, nil, testMsg); err != nil {
-		t.Fatalf("AggregatePkInG1 (pk only) failed: %v", err)
+	ok, err = PairingCheck([]G2Point{g2}, []G1Point{g1})
+	if err != nil {
+		t.Fatalf("PairingCheck failed: %v", err)
 	}
-	p.Commit()
-	if !p.FinalVerify(&gtsig) {
-		t.Error("Pairing.FinalVerify with an externally-supplied gtsig rejected a genuine signature")
+	if ok {
+		t.Error("PairingCheck accepted e(G1,G2) == 1")
 	}
 }
 
-func TestPairingSeparateGtsigMinSig(t *testing.T) {
-	// AggregatedInG1's mirror of TestPairingSeparateGtsig above, for the
-	// min-sig direction (pk in G2, sig in G1).
-	priv := privKeyN(t, 49)
-	pub := G2Point(priv.PublicKeyMinSig().point)
-	sigBytes := SignMinSig(priv, testMsg)
-	sig, err := G1PointFromCompressed(sigBytes[:])
+func TestPairingFunctionsRejectLengthMismatch(t *testing.T) {
+	g1, g2 := G1Generator(), G2Generator()
+	if _, err := MillerLoopN([]G2Point{g2}, nil); err == nil {
+		t.Error("MillerLoopN accepted mismatched lengths")
+	}
+	if _, err := PairN([]G2Point{g2}, nil); err == nil {
+		t.Error("PairN accepted mismatched lengths")
+	}
+	if _, err := PairingCheck(nil, []G1Point{g1}); err == nil {
+		t.Error("PairingCheck accepted mismatched lengths")
+	}
+}
+
+func TestFinalVerify(t *testing.T) {
+	g1, g2 := G1Generator(), G2Generator()
+	f, err := MillerLoop(g2, g1)
+	if err != nil {
+		t.Fatalf("MillerLoop failed: %v", err)
+	}
+	other, err := MillerLoop(g2, g1.Double())
+	if err != nil {
+		t.Fatalf("MillerLoop failed: %v", err)
+	}
+	if !FinalVerify(f, f) {
+		t.Error("FinalVerify(f, f) is false")
+	}
+	if FinalVerify(f, other) {
+		t.Error("FinalVerify accepted two different pairings")
+	}
+}
+
+func TestVerifyMinPkAsARawPairingEquation(t *testing.T) {
+	// The same check VerifyMinPk performs, spelled out with this file's
+	// primitives: e(pk, H(m)) * e(-G1, sig) == 1.
+	priv := privKeyMinPkN(t, 42)
+	pkBytes := priv.PublicKey().Bytes()
+	pk, err := G1PointFromCompressed(pkBytes[:])
 	if err != nil {
 		t.Fatalf("G1PointFromCompressed failed: %v", err)
 	}
-	gtsig := AggregatedInG1(sig)
-
-	p := NewPairing(true, []byte(DefaultDSTMinSig))
-	if err := p.AggregatePkInG2(pub, nil, testMsg); err != nil {
-		t.Fatalf("AggregatePkInG2 (pk only) failed: %v", err)
+	sigBytes := signMinPk(t, priv, testMsg)
+	sig, err := G2PointFromCompressed(sigBytes[:])
+	if err != nil {
+		t.Fatalf("G2PointFromCompressed failed: %v", err)
 	}
-	p.Commit()
-	if !p.FinalVerify(&gtsig) {
-		t.Error("Pairing.FinalVerify with an externally-supplied gtsig rejected a genuine min-sig signature")
+	h, err := HashToG2(testMsg, []byte(DefaultDSTMinPk))
+	if err != nil {
+		t.Fatalf("HashToG2 failed: %v", err)
+	}
+
+	ok, err := PairingCheck([]G2Point{h, sig}, []G1Point{pk, G1Generator().Neg()})
+	if err != nil {
+		t.Fatalf("PairingCheck failed: %v", err)
+	}
+	if !ok {
+		t.Error("the min-pk verification equation did not hold for a genuine signature")
 	}
 }
 
-func TestPairingMerge(t *testing.T) {
-	privA := privKeyN(t, 45)
-	privB := privKeyN(t, 46)
-	pubA := G1Point(privA.PublicKeyMinPk().point)
-	pubB := G1Point(privB.PublicKeyMinPk().point)
-	msgA, msgB := []byte("message A"), []byte("message B")
-	sigABytes := SignMinPk(privA, msgA)
-	sigA, err := G2PointFromCompressed(sigABytes[:])
-	if err != nil {
-		t.Fatalf("G2PointFromCompressed (A) failed: %v", err)
-	}
-	sigBBytes := SignMinPk(privB, msgB)
-	sigB, err := G2PointFromCompressed(sigBBytes[:])
-	if err != nil {
-		t.Fatalf("G2PointFromCompressed (B) failed: %v", err)
-	}
+func TestG2PointEqual(t *testing.T) {
+	g := G2Generator()
 
-	pA := NewPairing(true, []byte(DefaultDSTMinPk))
-	if err := pA.AggregatePkInG1(pubA, &sigA, msgA); err != nil {
-		t.Fatalf("AggregatePkInG1 (A) failed: %v", err)
-	}
-	pA.Commit()
-
-	pB := NewPairing(true, []byte(DefaultDSTMinPk))
-	if err := pB.AggregatePkInG1(pubB, &sigB, msgB); err != nil {
-		t.Fatalf("AggregatePkInG1 (B) failed: %v", err)
-	}
-	pB.Commit()
-
-	if err := pA.Merge(pB); err != nil {
-		t.Fatalf("Merge failed: %v", err)
-	}
-	if !pA.FinalVerify(nil) {
-		t.Error("Pairing.FinalVerify rejected a merged pairing")
-	}
-}
-
-func TestPairingChkNMulNAggrPkInG1Batch(t *testing.T) {
-	privA := privKeyN(t, 47)
-	privB := privKeyN(t, 48)
-	pubA := G1Point(privA.PublicKeyMinPk().point)
-	pubB := G1Point(privB.PublicKeyMinPk().point)
-	msgA, msgB := []byte("message A"), []byte("message B")
-	sigABytes := SignMinPk(privA, msgA)
-	sigA, err := G2PointFromCompressed(sigABytes[:])
-	if err != nil {
-		t.Fatalf("G2PointFromCompressed (A) failed: %v", err)
-	}
-	sigBBytes := SignMinPk(privB, msgB)
-	sigB, err := G2PointFromCompressed(sigBBytes[:])
-	if err != nil {
-		t.Fatalf("G2PointFromCompressed (B) failed: %v", err)
-	}
-
-	scalarA, scalarB := scalarN(7), scalarN(11)
-
-	p := NewPairing(true, []byte(DefaultDSTMinPk))
-	if err := p.ChkNMulNAggrPkInG1(pubA, true, &sigA, true, scalarA, msgA); err != nil {
-		t.Fatalf("ChkNMulNAggrPkInG1 (A) failed: %v", err)
-	}
-	if err := p.ChkNMulNAggrPkInG1(pubB, true, &sigB, true, scalarB, msgB); err != nil {
-		t.Fatalf("ChkNMulNAggrPkInG1 (B) failed: %v", err)
-	}
-	p.Commit()
-	if !p.FinalVerify(nil) {
-		t.Error("Pairing.FinalVerify rejected a genuine batch")
-	}
+	assert.True(t, g.Equal(G2Generator()))
+	assert.False(t, g.Equal(g.Double()))
+	assert.False(t, g.IsInfinity())
 }

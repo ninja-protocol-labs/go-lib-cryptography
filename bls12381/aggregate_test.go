@@ -1,163 +1,284 @@
 package bls12381
 
-import "testing"
+import (
+	"testing"
 
-func TestAggregatePublicKeysMinPkAgreesWithPointAdd(t *testing.T) {
-	privA := privKeyN(t, 23)
-	privB := privKeyN(t, 24)
-	pubA := privA.PublicKeyMinPk()
-	pubB := privB.PublicKeyMinPk()
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
 
-	agg, err := AggregatePublicKeysMinPk([]*PublicKeyMinPk{pubA, pubB})
-	if err != nil {
-		t.Fatalf("AggregatePublicKeysMinPk failed: %v", err)
-	}
+func signerSet(t *testing.T, n int) []*PrivateKeyMinPk {
+	t.Helper()
 
-	// The sum of two private keys' public keys must equal the public key
-	// of the summed private key — sk isn't summed via addition mod r by
-	// this package's public API, so this is checked the other direction:
-	// order shouldn't matter.
-	aggReversed, err := AggregatePublicKeysMinPk([]*PublicKeyMinPk{pubB, pubA})
-	if err != nil {
-		t.Fatalf("AggregatePublicKeysMinPk (reversed) failed: %v", err)
+	out := make([]*PrivateKeyMinPk, n)
+	for i := range out {
+		k, err := PrivateKeyMinPkFromBytes(randSeckey(t))
+		require.NoError(t, err)
+		out[i] = k
 	}
-	if !agg.Equal(aggReversed) {
-		t.Error("AggregatePublicKeysMinPk is not order-independent")
-	}
+	return out
 }
 
-func TestAggregatePublicKeysMinPkRejectsEmpty(t *testing.T) {
-	if _, err := AggregatePublicKeysMinPk(nil); err == nil {
-		t.Error("AggregatePublicKeysMinPk accepted an empty list")
+func TestFastAggregateVerify(t *testing.T) {
+	const n = 16
+
+	keys := signerSet(t, n)
+	msg := []byte("one block, many attesters")
+
+	pubs := make([]*PublicKeyMinPk, n)
+	sigs := make([]*SignatureMinPk, n)
+	for i, k := range keys {
+		pubs[i] = k.PublicKey()
+
+		s, err := SignMinPk(k, msg)
+		require.NoError(t, err)
+		sigs[i] = s
 	}
+
+	agg, err := AggregateSignaturesMinPk(sigs)
+	require.NoError(t, err)
+	assert.True(t, FastAggregateVerifyMinPk(pubs, msg, agg))
+
+	t.Run("a missing signer fails", func(t *testing.T) {
+		short, err := AggregateSignaturesMinPk(sigs[:n-1])
+		require.NoError(t, err)
+		assert.False(t, FastAggregateVerifyMinPk(pubs, msg, short))
+	})
+
+	t.Run("an extra key fails", func(t *testing.T) {
+		extra := signerSet(t, 1)[0]
+		assert.False(t, FastAggregateVerifyMinPk(append(pubs, extra.PublicKey()), msg, agg))
+	})
+
+	t.Run("wrong message fails", func(t *testing.T) {
+		assert.False(t, FastAggregateVerifyMinPk(pubs, []byte("another block"), agg))
+	})
 }
 
-func TestAggregatePublicKeysMinSigRejectsEmpty(t *testing.T) {
-	if _, err := AggregatePublicKeysMinSig(nil); err == nil {
-		t.Error("AggregatePublicKeysMinSig accepted an empty list")
+// Aggregation is a sum, so the order of the terms must not matter.
+func TestAggregateIsOrderIndependent(t *testing.T) {
+	keys := signerSet(t, 8)
+	msg := []byte("order independence")
+
+	sigs := make([]*SignatureMinPk, len(keys))
+	pubs := make([]*PublicKeyMinPk, len(keys))
+	for i, k := range keys {
+		pubs[i] = k.PublicKey()
+
+		s, err := SignMinPk(k, msg)
+		require.NoError(t, err)
+		sigs[i] = s
 	}
+
+	forward, err := AggregateSignaturesMinPk(sigs)
+	require.NoError(t, err)
+
+	reversed := make([]*SignatureMinPk, len(sigs))
+	for i := range sigs {
+		reversed[i] = sigs[len(sigs)-1-i]
+	}
+	backward, err := AggregateSignaturesMinPk(reversed)
+	require.NoError(t, err)
+
+	assert.True(t, forward.Equal(backward))
+
+	pf, err := AggregatePublicKeysMinPk(pubs)
+	require.NoError(t, err)
+
+	revPubs := make([]*PublicKeyMinPk, len(pubs))
+	for i := range pubs {
+		revPubs[i] = pubs[len(pubs)-1-i]
+	}
+	pb, err := AggregatePublicKeysMinPk(revPubs)
+	require.NoError(t, err)
+
+	assert.True(t, pf.Equal(pb))
 }
 
-func TestAggregateSignaturesMinPkRoundTrip(t *testing.T) {
-	privA := privKeyN(t, 25)
-	privB := privKeyN(t, 26)
-	pubA := privA.PublicKeyMinPk()
-	pubB := privB.PublicKeyMinPk()
+func TestAggregateVerifyDistinctMessages(t *testing.T) {
+	const n = 8
 
-	sigA := SignMinPk(privA, testMsg)
-	sigB := SignMinPk(privB, testMsg)
+	keys := signerSet(t, n)
+	pubs := make([]*PublicKeyMinPk, n)
+	msgs := make([][]byte, n)
+	sigs := make([]*SignatureMinPk, n)
 
-	aggSig, err := AggregateSignaturesMinPk([][]byte{sigA[:], sigB[:]})
-	if err != nil {
-		t.Fatalf("AggregateSignaturesMinPk failed: %v", err)
+	for i, k := range keys {
+		pubs[i] = k.PublicKey()
+		msgs[i] = []byte{byte(i), byte(i * 3)}
+
+		s, err := SignMinPk(k, msgs[i])
+		require.NoError(t, err)
+		sigs[i] = s
 	}
 
-	if !FastAggregateVerifyMinPk([]*PublicKeyMinPk{pubA, pubB}, testMsg, aggSig[:]) {
-		t.Error("FastAggregateVerifyMinPk rejected a genuine aggregated signature")
-	}
+	agg, err := AggregateSignaturesMinPk(sigs)
+	require.NoError(t, err)
+	assert.True(t, AggregateVerifyMinPk(pubs, msgs, agg))
+
+	t.Run("swapped messages fail", func(t *testing.T) {
+		swapped := make([][]byte, n)
+		copy(swapped, msgs)
+		swapped[0], swapped[1] = swapped[1], swapped[0]
+		assert.False(t, AggregateVerifyMinPk(pubs, swapped, agg))
+	})
+
+	t.Run("length mismatch fails", func(t *testing.T) {
+		assert.False(t, AggregateVerifyMinPk(pubs, msgs[:n-1], agg))
+	})
+
+	t.Run("nil signature fails", func(t *testing.T) {
+		assert.False(t, AggregateVerifyMinPk(pubs, msgs, nil))
+	})
 }
 
-func TestAggregateSignaturesMinSigRoundTrip(t *testing.T) {
-	privA := privKeyN(t, 27)
-	privB := privKeyN(t, 28)
-	pubA := privA.PublicKeyMinSig()
-	pubB := privB.PublicKeyMinSig()
+func TestAggregateMinSig(t *testing.T) {
+	const n = 8
 
-	sigA := SignMinSig(privA, testMsg)
-	sigB := SignMinSig(privB, testMsg)
+	msg := []byte("min-sig aggregation")
+	pubs := make([]*PublicKeyMinSig, n)
+	sigs := make([]*SignatureMinSig, n)
 
-	aggSig, err := AggregateSignaturesMinSig([][]byte{sigA[:], sigB[:]})
-	if err != nil {
-		t.Fatalf("AggregateSignaturesMinSig failed: %v", err)
+	for i := range pubs {
+		k, err := PrivateKeyMinSigFromBytes(randSeckey(t))
+		require.NoError(t, err)
+		pubs[i] = k.PublicKey()
+
+		s, err := SignMinSig(k, msg)
+		require.NoError(t, err)
+		sigs[i] = s
 	}
 
-	if !FastAggregateVerifyMinSig([]*PublicKeyMinSig{pubA, pubB}, testMsg, aggSig[:]) {
-		t.Error("FastAggregateVerifyMinSig rejected a genuine aggregated signature")
-	}
+	agg, err := AggregateSignaturesMinSig(sigs)
+	require.NoError(t, err)
+	assert.True(t, FastAggregateVerifyMinSig(pubs, msg, agg))
+	assert.False(t, FastAggregateVerifyMinSig(pubs, []byte("other"), agg))
 }
 
-func TestAggregateSignaturesMinPkRejectsEmpty(t *testing.T) {
-	if _, err := AggregateSignaturesMinPk(nil); err == nil {
-		t.Error("AggregateSignaturesMinPk accepted an empty list")
+// The rogue key attack the FastAggregateVerify doc warns about, made
+// concrete: a key chosen as x·G - Σ(honest keys) lets its holder forge an
+// aggregate over a message the honest signers never saw.
+func TestRogueKeyAttackSucceedsUnderTheBasicScheme(t *testing.T) {
+	honest := signerSet(t, 3)
+	msg := []byte("a message no honest signer ever saw")
+
+	honestPubs := make([]*PublicKeyMinPk, len(honest))
+	for i, k := range honest {
+		honestPubs[i] = k.PublicKey()
 	}
+
+	sumHonest, err := AggregatePublicKeysMinPk(honestPubs)
+	require.NoError(t, err)
+
+	// The attacker's registered key is x·G minus the honest sum.
+	attacker, err := PrivateKeyMinPkFromBytes(randSeckey(t))
+	require.NoError(t, err)
+
+	x := attacker.Bytes()
+
+	sum := sumHonest.Bytes()
+	sumPoint, err := G1PointFromCompressed(sum[:])
+	require.NoError(t, err)
+
+	rogue := G1Generator().Mul(x).Add(sumPoint.Neg()).Bytes()
+	roguePub, err := PublicKeyMinPkFromBytes(rogue[:])
+	require.NoError(t, err)
+
+	// The attacker signs alone; the aggregate of every key verifies.
+	forged, err := SignMinPk(attacker, msg)
+	require.NoError(t, err)
+
+	all := append(honestPubs, roguePub)
+	assert.True(t, FastAggregateVerifyMinPk(all, msg, forged),
+		"the rogue key attack is expected to succeed under the basic scheme")
 }
 
-func TestAggregateSignaturesMinPkRejectsWrongLength(t *testing.T) {
-	if _, err := AggregateSignaturesMinPk([][]byte{{0x01, 0x02}}); err == nil {
-		t.Error("AggregateSignaturesMinPk accepted a wrong-length signature")
+func TestAggregateVerifyDistinctMessagesMinSig(t *testing.T) {
+	const n = 5
+
+	pubs := make([]*PublicKeyMinSig, n)
+	msgs := make([][]byte, n)
+	sigs := make([]*SignatureMinSig, n)
+
+	for i := range pubs {
+		k, err := PrivateKeyMinSigFromBytes(randSeckey(t))
+		require.NoError(t, err)
+
+		pubs[i] = k.PublicKey()
+		msgs[i] = []byte{byte(i), byte(i * 5)}
+
+		s, err := SignMinSig(k, msgs[i])
+		require.NoError(t, err)
+		sigs[i] = s
 	}
+
+	agg, err := AggregateSignaturesMinSig(sigs)
+	require.NoError(t, err)
+	assert.True(t, AggregateVerifyMinSig(pubs, msgs, agg))
+
+	msgs[0], msgs[1] = msgs[1], msgs[0]
+	assert.False(t, AggregateVerifyMinSig(pubs, msgs, agg))
+	assert.False(t, AggregateVerifyMinSig(pubs, msgs[:n-1], agg))
+	assert.False(t, AggregateVerifyMinSig(pubs, msgs, nil))
 }
 
-func TestFastAggregateVerifyMinPkRejectsTamperedSignature(t *testing.T) {
-	privA := privKeyN(t, 29)
-	privB := privKeyN(t, 30)
-	pubA := privA.PublicKeyMinPk()
-	pubB := privB.PublicKeyMinPk()
+func TestAggregatorLenAndMinSigStream(t *testing.T) {
+	var (
+		pk  SignatureAggregatorMinPk
+		sig SignatureAggregatorMinSig
+	)
 
-	sigA := SignMinPk(privA, testMsg)
-	sigB := SignMinPk(privB, []byte("a different message"))
+	assert.Zero(t, pk.Len())
+	assert.Zero(t, sig.Len())
 
-	aggSig, err := AggregateSignaturesMinPk([][]byte{sigA[:], sigB[:]})
-	if err != nil {
-		t.Fatalf("AggregateSignaturesMinPk failed: %v", err)
+	msg := []byte("streamed min-sig")
+	sigs := make([]*SignatureMinSig, 4)
+	for i := range sigs {
+		k, err := PrivateKeyMinSigFromBytes(randSeckey(t))
+		require.NoError(t, err)
+
+		s, err := SignMinSig(k, msg)
+		require.NoError(t, err)
+
+		sigs[i] = s
+		require.NoError(t, sig.Add(s))
 	}
-	if FastAggregateVerifyMinPk([]*PublicKeyMinPk{pubA, pubB}, testMsg, aggSig[:]) {
-		t.Error("FastAggregateVerifyMinPk accepted a signature aggregated from mismatched messages")
-	}
+
+	assert.Equal(t, len(sigs), sig.Len())
+	assert.ErrorIs(t, sig.Add(nil), ErrAggregateFailed)
+
+	streamed, err := sig.Signature()
+	require.NoError(t, err)
+	onePass, err := AggregateSignaturesMinSig(sigs)
+	require.NoError(t, err)
+	assert.True(t, streamed.Equal(onePass))
+
+	_, err = pk.Signature()
+	assert.ErrorIs(t, err, ErrAggregateFailed)
+	_, err = AggregatePublicKeysMinSig(nil)
+	assert.ErrorIs(t, err, ErrAggregateFailed)
+	_, err = AggregatePublicKeysMinSig([]*PublicKeyMinSig{nil})
+	assert.ErrorIs(t, err, ErrAggregateFailed)
+	_, err = AggregateSignaturesMinSig([]*SignatureMinSig{nil})
+	assert.ErrorIs(t, err, ErrAggregateFailed)
 }
 
-func TestAggregateVerifyMinPkDistinctMessages(t *testing.T) {
-	privA := privKeyN(t, 31)
-	privB := privKeyN(t, 32)
-	pubA := privA.PublicKeyMinPk()
-	pubB := privB.PublicKeyMinPk()
-	msgA := []byte("message A")
-	msgB := []byte("message B")
+// An empty or nil-bearing key set must fail rather than aggregate to the
+// identity, which would verify against a matching identity signature.
+func TestFastAggregateVerifyRejectsEmptyKeySet(t *testing.T) {
+	k, err := PrivateKeyMinPkFromBytes(randSeckey(t))
+	require.NoError(t, err)
+	sig, err := SignMinPk(k, testMsg)
+	require.NoError(t, err)
 
-	sigA := SignMinPk(privA, msgA)
-	sigB := SignMinPk(privB, msgB)
-	aggSig, err := AggregateSignaturesMinPk([][]byte{sigA[:], sigB[:]})
-	if err != nil {
-		t.Fatalf("AggregateSignaturesMinPk failed: %v", err)
-	}
+	assert.False(t, FastAggregateVerifyMinPk(nil, testMsg, sig))
+	assert.False(t, FastAggregateVerifyMinPk([]*PublicKeyMinPk{nil}, testMsg, sig))
 
-	if !AggregateVerifyMinPk([]*PublicKeyMinPk{pubA, pubB}, [][]byte{msgA, msgB}, aggSig[:]) {
-		t.Error("AggregateVerifyMinPk rejected a genuine batch over distinct messages")
-	}
-	if AggregateVerifyMinPk([]*PublicKeyMinPk{pubA, pubB}, [][]byte{msgB, msgA}, aggSig[:]) {
-		t.Error("AggregateVerifyMinPk accepted messages assigned to the wrong signer")
-	}
-}
+	s, err := PrivateKeyMinSigFromBytes(randSeckey(t))
+	require.NoError(t, err)
+	sigSig, err := SignMinSig(s, testMsg)
+	require.NoError(t, err)
 
-func TestAggregateVerifyMinSigDistinctMessages(t *testing.T) {
-	privA := privKeyN(t, 33)
-	privB := privKeyN(t, 34)
-	pubA := privA.PublicKeyMinSig()
-	pubB := privB.PublicKeyMinSig()
-	msgA := []byte("message A")
-	msgB := []byte("message B")
-
-	sigA := SignMinSig(privA, msgA)
-	sigB := SignMinSig(privB, msgB)
-	aggSig, err := AggregateSignaturesMinSig([][]byte{sigA[:], sigB[:]})
-	if err != nil {
-		t.Fatalf("AggregateSignaturesMinSig failed: %v", err)
-	}
-
-	if !AggregateVerifyMinSig([]*PublicKeyMinSig{pubA, pubB}, [][]byte{msgA, msgB}, aggSig[:]) {
-		t.Error("AggregateVerifyMinSig rejected a genuine batch over distinct messages")
-	}
-	if AggregateVerifyMinSig([]*PublicKeyMinSig{pubA, pubB}, [][]byte{msgB, msgA}, aggSig[:]) {
-		t.Error("AggregateVerifyMinSig accepted messages assigned to the wrong signer")
-	}
-}
-
-func TestAggregateVerifyMinPkRejectsLengthMismatch(t *testing.T) {
-	privA := privKeyN(t, 35)
-	pubA := privA.PublicKeyMinPk()
-	sig := SignMinPk(privA, testMsg)
-
-	if AggregateVerifyMinPk([]*PublicKeyMinPk{pubA}, [][]byte{testMsg, testMsg}, sig[:]) {
-		t.Error("AggregateVerifyMinPk accepted mismatched pks/msgs lengths")
-	}
+	assert.False(t, FastAggregateVerifyMinSig(nil, testMsg, sigSig))
+	assert.False(t, FastAggregateVerifyMinSig([]*PublicKeyMinSig{nil}, testMsg, sigSig))
 }
