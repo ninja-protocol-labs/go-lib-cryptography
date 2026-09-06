@@ -1,56 +1,58 @@
 package bn254
 
-import "testing"
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"testing"
 
-// testMsg is the fixed message used across sign/verify/aggregate tests —
-// the actual bytes don't matter, only that it's non-empty and stable.
-var testMsg = []byte("the quick brown fox jumps over the lazy dog")
+	"github.com/stretchr/testify/require"
+)
 
-// privKeyN returns the PrivateKey for the small scalar n, the simplest
-// non-zero test value available — the same helper shape bls12381's and
-// secp256k1's tests use.
-func privKeyN(t *testing.T, n byte) *PrivateKey {
+func mustHex(t *testing.T, s string) []byte {
 	t.Helper()
-	b := scalarN(n)
-	priv, err := PrivateKeyFromBytes(b[:])
-	if err != nil {
-		t.Fatalf("PrivateKeyFromBytes failed for a valid key: %v", err)
-	}
-	return priv
-}
 
-// privKeyOne is privKeyN(t, 1) — its public key is the G1/G2 generator
-// itself, since 1*G = G.
-func privKeyOne(t *testing.T) *PrivateKey {
-	t.Helper()
-	return privKeyN(t, 1)
-}
-
-// scalarN is the big-endian encoding of the small scalar n, the form
-// G1Point.Mul and MultiScalarMultG1 take.
-func scalarN(n byte) [SeckeyLen]byte {
-	var b [SeckeyLen]byte
-	b[SeckeyLen-1] = n
+	b, err := hex.DecodeString(s)
+	require.NoError(t, err)
 	return b
 }
 
-// signMinPk is SignMinPk with the error folded into a t.Fatal, so the
-// tests that only care about the signature bytes stay readable.
-func signMinPk(t *testing.T, priv *PrivateKey, msg []byte) [SignatureMinPkLen]byte {
+// scalarArrN is the big-endian encoding of the small scalar n, the form
+// Mul and MSM take.
+func scalarArrN(t *testing.T, n byte) [ScalarLen]byte {
 	t.Helper()
-	sig, err := SignMinPk(priv, msg)
-	if err != nil {
-		t.Fatalf("SignMinPk failed: %v", err)
-	}
-	return sig
+
+	var b [ScalarLen]byte
+	b[ScalarLen-1] = n
+	return b
 }
 
-// signMinSig is signMinPk's mirror for the min-sig scheme.
-func signMinSig(t *testing.T, priv *PrivateKey, msg []byte) [SignatureMinSigLen]byte {
+func randScalar(t *testing.T) [ScalarLen]byte {
 	t.Helper()
-	sig, err := SignMinSig(priv, msg)
-	if err != nil {
-		t.Fatalf("SignMinSig failed: %v", err)
-	}
-	return sig
+
+	var b [ScalarLen]byte
+	_, err := rand.Read(b[:])
+	require.NoError(t, err)
+	return b
+}
+
+// testMsg is the fixed message the pairing and MSM tests share; only that
+// it is non-empty and stable matters.
+var testMsg = []byte("the quick brown fox jumps over the lazy dog")
+
+// testDST is a domain separation tag for the hash-to-curve tests. Which tag
+// does not matter here; that a wrong one gives a different point does.
+var testDST = []byte("XMD:SHA-256_RO_TESTING_")
+
+// g1PointN and g2PointN are n*G, a cheap way to get a point that is not the
+// generator.
+func g1PointN(t *testing.T, n byte) G1Point {
+	t.Helper()
+
+	return G1Generator().Mul(scalarArrN(t, n))
+}
+
+func g2PointN(t *testing.T, n byte) G2Point {
+	t.Helper()
+
+	return G2Generator().Mul(scalarArrN(t, n))
 }

@@ -2,12 +2,11 @@ package bls12381
 
 import (
 	"bytes"
-	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
 func TestG1PointFromCompressedRoundTrip(t *testing.T) {
-	pub := privKeyMinPkN(t, 40).PublicKey()
+	pub := g1PointN(t, 40)
 	b := pub.Bytes()
 	p, err := G1PointFromCompressed(b[:])
 	if err != nil {
@@ -19,7 +18,7 @@ func TestG1PointFromCompressedRoundTrip(t *testing.T) {
 }
 
 func TestG2PointFromCompressedRoundTrip(t *testing.T) {
-	pub := privKeyMinSigN(t, 40).PublicKey()
+	pub := g2PointN(t, 40)
 	b := pub.Bytes()
 	p, err := G2PointFromCompressed(b[:])
 	if err != nil {
@@ -31,10 +30,10 @@ func TestG2PointFromCompressedRoundTrip(t *testing.T) {
 }
 
 func TestPointFromCompressedRejectsGarbage(t *testing.T) {
-	if _, err := G1PointFromCompressed(bytes.Repeat([]byte{0xff}, PubkeyMinPkLen)); err == nil {
+	if _, err := G1PointFromCompressed(bytes.Repeat([]byte{0xff}, G1CompressedLen)); err == nil {
 		t.Error("G1PointFromCompressed accepted garbage")
 	}
-	if _, err := G2PointFromCompressed(bytes.Repeat([]byte{0xff}, PubkeyMinSigLen)); err == nil {
+	if _, err := G2PointFromCompressed(bytes.Repeat([]byte{0xff}, G2CompressedLen)); err == nil {
 		t.Error("G2PointFromCompressed accepted garbage")
 	}
 	if _, err := G1PointFromCompressed(nil); err == nil {
@@ -84,7 +83,7 @@ func TestNeg(t *testing.T) {
 }
 
 func TestHashToCurveIsDeterministicAndDomainSeparated(t *testing.T) {
-	dst := []byte(DefaultDSTMinSig)
+	dst := testDST
 
 	a, err := HashToG1(testMsg, dst)
 	if err != nil {
@@ -106,11 +105,11 @@ func TestHashToCurveIsDeterministicAndDomainSeparated(t *testing.T) {
 		t.Error("HashToG1 ignored the domain separation tag")
 	}
 
-	c, err := HashToG2(testMsg, []byte(DefaultDSTMinPk))
+	c, err := HashToG2(testMsg, testDST)
 	if err != nil {
 		t.Fatalf("HashToG2 failed: %v", err)
 	}
-	d, err := HashToG2(testMsg, []byte(DefaultDSTMinPk))
+	d, err := HashToG2(testMsg, testDST)
 	if err != nil {
 		t.Fatalf("HashToG2 failed: %v", err)
 	}
@@ -120,7 +119,7 @@ func TestHashToCurveIsDeterministicAndDomainSeparated(t *testing.T) {
 }
 
 func TestEncodeToCurveDiffersFromHashToCurve(t *testing.T) {
-	dst := []byte(DefaultDSTMinSig)
+	dst := testDST
 	h, err := HashToG1(testMsg, dst)
 	if err != nil {
 		t.Fatalf("HashToG1 failed: %v", err)
@@ -256,7 +255,7 @@ func TestMillerLoopAgreesWithLinesPrecompute(t *testing.T) {
 
 func TestMillerLoopNAgreesWithGTMul(t *testing.T) {
 	g1, g2 := G1Generator(), G2Generator()
-	pkBytes := privKeyMinPkN(t, 41).PublicKey().Bytes()
+	pkBytes := g1PointN(t, 41).Bytes()
 	pkA, err := G1PointFromCompressed(pkBytes[:])
 	if err != nil {
 		t.Fatalf("G1PointFromCompressed failed: %v", err)
@@ -346,38 +345,24 @@ func TestFinalVerify(t *testing.T) {
 	}
 }
 
-func TestVerifyMinPkAsARawPairingEquation(t *testing.T) {
-	// The same check VerifyMinPk performs, spelled out with this file's
-	// primitives: e(pk, H(m)) * e(-G1, sig) == 1.
-	priv := privKeyMinPkN(t, 42)
-	pkBytes := priv.PublicKey().Bytes()
-	pk, err := G1PointFromCompressed(pkBytes[:])
-	if err != nil {
-		t.Fatalf("G1PointFromCompressed failed: %v", err)
-	}
-	sigBytes := signMinPk(t, priv, testMsg)
-	sig, err := G2PointFromCompressed(sigBytes[:])
-	if err != nil {
-		t.Fatalf("G2PointFromCompressed failed: %v", err)
-	}
-	h, err := HashToG2(testMsg, []byte(DefaultDSTMinPk))
+func TestBLSVerificationEquation(t *testing.T) {
+	// The equation a BLS signature satisfies, written with this package's
+	// primitives alone: with pk = x*G1 and sig = x*H(m),
+	// e(pk, H(m)) * e(-G1, sig) == 1.
+	x := scalarArrN(t, 42)
+	pk := G1Generator().Mul(x)
+
+	h, err := HashToG2(testMsg, testDST)
 	if err != nil {
 		t.Fatalf("HashToG2 failed: %v", err)
 	}
+	sig := h.Mul(x)
 
 	ok, err := PairingCheck([]G2Point{h, sig}, []G1Point{pk, G1Generator().Neg()})
 	if err != nil {
 		t.Fatalf("PairingCheck failed: %v", err)
 	}
 	if !ok {
-		t.Error("the min-pk verification equation did not hold for a genuine signature")
+		t.Error("the BLS verification equation did not hold")
 	}
-}
-
-func TestG2PointEqual(t *testing.T) {
-	g := G2Generator()
-
-	assert.True(t, g.Equal(G2Generator()))
-	assert.False(t, g.Equal(g.Double()))
-	assert.False(t, g.IsInfinity())
 }

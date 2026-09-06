@@ -81,10 +81,6 @@ func (k *PrivateKey) IsZero() bool {
 	return subtle.ConstantTimeCompare(k.key[:], z[:]) == 1
 }
 
-func (k *PrivateKey) Public() *PublicKey {
-	return k.PublicKey()
-}
-
 // scalar is k in the form dcrd's signing takes.
 func (k *PrivateKey) scalar() *secp256k1.PrivateKey {
 	var s secp256k1.ModNScalar

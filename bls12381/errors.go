@@ -3,11 +3,15 @@ package bls12381
 import "errors"
 
 var (
-	ErrInvalidPrivateKey = errors.New("bls12381: invalid private key")
-	ErrInvalidPublicKey  = errors.New("bls12381: invalid public key")
-	ErrInvalidSignature  = errors.New("bls12381: invalid signature")
+	// ErrInvalidPoint means bytes handed to a *FromCompressed function are
+	// not a valid encoding of a point in the prime-order subgroup.
+	ErrInvalidPoint = errors.New("bls12381: invalid point")
+
+	// ErrHashToCurveFailed is only reachable with a domain separation tag
+	// longer than 255 bytes, which RFC 9380's expand_message_xmd cannot
+	// encode.
 	ErrHashToCurveFailed = errors.New("bls12381: hash to curve failed")
-	ErrAggregateFailed   = errors.New("bls12381: aggregation failed")
-	ErrPairingFailed     = errors.New("bls12381: pairing failed")
-	ErrLengthMismatch    = errors.New("bls12381: length mismatch")
+
+	ErrPairingFailed  = errors.New("bls12381: pairing failed")
+	ErrLengthMismatch = errors.New("bls12381: length mismatch")
 )

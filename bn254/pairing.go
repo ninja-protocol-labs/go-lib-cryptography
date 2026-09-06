@@ -11,6 +11,16 @@ import (
 // (fp.Element, E2, E12) never appear in this package's API. All three are
 // comparable, so == and != work on them directly, as do map keys.
 
+// The standard generators, resolved once at init.
+var (
+	g1Gen bn254.G1Affine
+	g2Gen bn254.G2Affine
+)
+
+func init() {
+	_, _, g1Gen, g2Gen = bn254.Generators()
+}
+
 // G1Point is a point in G1, the curve group over 𝔽p.
 type G1Point struct {
 	p bn254.G1Affine
@@ -42,10 +52,10 @@ func G2Generator() G2Point {
 func G1PointFromCompressed(b []byte) (G1Point, error) {
 	var out G1Point
 	if len(b) != G1CompressedLen {
-		return out, ErrInvalidPublicKey
+		return out, ErrInvalidPoint
 	}
 	if _, err := out.p.SetBytes(b); err != nil {
-		return out, ErrInvalidPublicKey
+		return out, ErrInvalidPoint
 	}
 	return out, nil
 }
@@ -55,10 +65,10 @@ func G1PointFromCompressed(b []byte) (G1Point, error) {
 func G2PointFromCompressed(b []byte) (G2Point, error) {
 	var out G2Point
 	if len(b) != G2CompressedLen {
-		return out, ErrInvalidPublicKey
+		return out, ErrInvalidPoint
 	}
 	if _, err := out.p.SetBytes(b); err != nil {
-		return out, ErrInvalidPublicKey
+		return out, ErrInvalidPoint
 	}
 	return out, nil
 }
@@ -143,14 +153,14 @@ func (p G2Point) Neg() G2Point {
 // Unlike bls12381's Mul this takes no bit-width argument: blst needs to be
 // told how many bits of the scalar to walk, whereas gnark-crypto reads
 // that from the scalar's own magnitude.
-func (p G1Point) Mul(scalar [SeckeyLen]byte) G1Point {
+func (p G1Point) Mul(scalar [ScalarLen]byte) G1Point {
 	var out G1Point
 	out.p.ScalarMultiplication(&p.p, new(big.Int).SetBytes(scalar[:]))
 	return out
 }
 
 // Mul returns scalar*p, where scalar is a big-endian 32-byte value.
-func (p G2Point) Mul(scalar [SeckeyLen]byte) G2Point {
+func (p G2Point) Mul(scalar [ScalarLen]byte) G2Point {
 	var out G2Point
 	out.p.ScalarMultiplication(&p.p, new(big.Int).SetBytes(scalar[:]))
 	return out
