@@ -1,11 +1,11 @@
 package argon2
 
 import (
-	"bytes"
 	"encoding/hex"
-	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	upstream "golang.org/x/crypto/argon2"
 )
 
@@ -64,18 +64,14 @@ const (
 func mustDecodeHex(t *testing.T, s string) []byte {
 	t.Helper()
 	b, err := hex.DecodeString(s)
-	if err != nil {
-		t.Fatalf("bad test vector %q: %v", s, err)
-	}
+	require.NoError(t, err, "bad test vector %q", s)
 	return b
 }
 
 func idKey(t *testing.T, password, salt []byte, keyLen uint32) []byte {
 	t.Helper()
 	k, err := IDKey(password, salt, testTime, testMemory, testThreads, keyLen)
-	if err != nil {
-		t.Fatalf("IDKey failed: %v", err)
-	}
+	require.NoError(t, err)
 	return k
 }
 
@@ -84,12 +80,9 @@ func TestKeyMatchesKnownAnswers(t *testing.T) {
 		t.Run(v.name, func(t *testing.T) {
 			want := mustDecodeHex(t, v.want)
 			got, err := v.fn(testPassword, testSalt, v.time, v.memory, v.threads, uint32(len(want)))
-			if err != nil {
-				t.Fatalf("derivation failed: %v", err)
-			}
-			if !bytes.Equal(got, want) {
-				t.Errorf("got %x, want %x", got, want)
-			}
+			require.NoError(t, err)
+
+			assert.Equal(t, want, got)
 		})
 	}
 }
@@ -100,24 +93,18 @@ func TestVariantsAreDomainSeparated(t *testing.T) {
 	// parameters, different key — which is the whole reason this package
 	// refuses to offer a function called Key.
 	id, err := IDKey(testPassword, testSalt, testTime, testMemory, testThreads, 32)
-	if err != nil {
-		t.Fatalf("IDKey failed: %v", err)
-	}
+	require.NoError(t, err)
 	i, err := IKey(testPassword, testSalt, testTime, testMemory, testThreads, 32)
-	if err != nil {
-		t.Fatalf("IKey failed: %v", err)
-	}
-	if bytes.Equal(id, i) {
-		t.Error("Argon2id and Argon2i produced the same key")
-	}
+	require.NoError(t, err)
+
+	assert.NotEqual(t, id, i, "Argon2id and Argon2i produced the same key")
 }
 
 func TestKeyIsDeterministic(t *testing.T) {
 	a := idKey(t, testPassword, testSalt, 32)
 	b := idKey(t, testPassword, testSalt, 32)
-	if !bytes.Equal(a, b) {
-		t.Error("two identical derivations disagreed")
-	}
+
+	assert.Equal(t, a, b, "two identical derivations disagreed")
 }
 
 func TestEveryInputChangesTheKey(t *testing.T) {
@@ -143,12 +130,9 @@ func TestEveryInputChangesTheKey(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := IDKey(tt.password, tt.salt, tt.time, tt.memory, tt.threads, 32)
-			if err != nil {
-				t.Fatalf("IDKey failed: %v", err)
-			}
-			if bytes.Equal(got, base) {
-				t.Errorf("changing the %s did not change the key", tt.name)
-			}
+			require.NoError(t, err)
+
+			assert.NotEqual(t, base, got, "changing the %s did not change the key", tt.name)
 		})
 	}
 }
@@ -160,9 +144,9 @@ func TestKeyLenChangesTheWholeKey(t *testing.T) {
 	// the prefix property would silently get unrelated key material.
 	short := idKey(t, testPassword, testSalt, 32)
 	long := idKey(t, testPassword, testSalt, 64)
-	if bytes.Equal(short, long[:32]) {
-		t.Error("a 32-byte key is a prefix of a 64-byte one; the length is not bound in")
-	}
+
+	assert.NotEqual(t, long[:32], short,
+		"a 32-byte key is a prefix of a 64-byte one; the length is not bound in")
 }
 
 func TestRequestedMemoryIsBoundInNotTheRoundedOne(t *testing.T) {
@@ -174,21 +158,16 @@ func TestRequestedMemoryIsBoundInNotTheRoundedOne(t *testing.T) {
 	const threads = 4
 	const requested, rounded = 1000, 992 // 4·4·floor(1000/16) = 992
 
-	if a, b := MemoryBytes(requested, threads), MemoryBytes(rounded, threads); a != b {
-		t.Fatalf("test premise is wrong: %d and %d allocate %d and %d", requested, rounded, a, b)
-	}
+	require.Equal(t, MemoryBytes(requested, threads), MemoryBytes(rounded, threads),
+		"test premise is wrong: %d and %d must allocate the same", requested, rounded)
 
 	withRequested, err := IDKey(testPassword, testSalt, 1, requested, threads, 32)
-	if err != nil {
-		t.Fatalf("IDKey failed: %v", err)
-	}
+	require.NoError(t, err)
 	withRounded, err := IDKey(testPassword, testSalt, 1, rounded, threads, 32)
-	if err != nil {
-		t.Fatalf("IDKey failed: %v", err)
-	}
-	if bytes.Equal(withRequested, withRounded) {
-		t.Error("the rounded and requested memory values produced the same key")
-	}
+	require.NoError(t, err)
+
+	assert.NotEqual(t, withRequested, withRounded,
+		"the rounded and requested memory values produced the same key")
 }
 
 func TestRejectsWhatUpstreamWouldPanicOn(t *testing.T) {
@@ -208,21 +187,15 @@ func TestRejectsWhatUpstreamWouldPanicOn(t *testing.T) {
 			// The library underneath returns no error, so each of these is
 			// a panic there. Asserting that keeps the guards above from
 			// being cargo-culted, and says so if upstream ever changes.
-			func() {
-				defer func() {
-					if recover() == nil {
-						t.Errorf("upstream no longer panics on %s; revisit %v", tt.name, tt.want)
-					}
-				}()
+			assert.Panics(t, func() {
 				upstream.IDKey(testPassword, testSalt, tt.time, testMemory, tt.threads, tt.keyLen)
-			}()
+			}, "upstream no longer panics on %s; revisit %v", tt.name, tt.want)
 
-			if _, err := IDKey(testPassword, testSalt, tt.time, testMemory, tt.threads, tt.keyLen); !errors.Is(err, tt.want) {
-				t.Errorf("IDKey error = %v, want %v", err, tt.want)
-			}
-			if _, err := IKey(testPassword, testSalt, tt.time, testMemory, tt.threads, tt.keyLen); !errors.Is(err, tt.want) {
-				t.Errorf("IKey error = %v, want %v", err, tt.want)
-			}
+			_, err := IDKey(testPassword, testSalt, tt.time, testMemory, tt.threads, tt.keyLen)
+			assert.ErrorIs(t, err, tt.want, "IDKey")
+
+			_, err = IKey(testPassword, testSalt, tt.time, testMemory, tt.threads, tt.keyLen)
+			assert.ErrorIs(t, err, tt.want, "IKey")
 		})
 	}
 }
@@ -232,24 +205,17 @@ func TestTinyMemoryIsClampedNotRejected(t *testing.T) {
 	// So this must succeed rather than error, and must agree with what
 	// MemoryBytes says the floor is.
 	got, err := IDKey(testPassword, testSalt, 1, 0, 4, 32)
-	if err != nil {
-		t.Fatalf("IDKey rejected a zero memory parameter: %v", err)
-	}
-	if len(got) != 32 {
-		t.Errorf("length = %d, want 32", len(got))
-	}
-	if want := int64(8 * 4 * 1024); MemoryBytes(0, 4) != want {
-		t.Errorf("MemoryBytes(0, 4) = %d, want the %d floor", MemoryBytes(0, 4), want)
-	}
+	require.NoError(t, err, "IDKey rejected a zero memory parameter")
+	assert.Len(t, got, 32)
+
+	assert.Equal(t, int64(8*4*1024), MemoryBytes(0, 4), "MemoryBytes did not report the floor")
 }
 
 func TestEmptyPasswordAndSaltAreAllowed(t *testing.T) {
 	// Neither is a good idea — RFC 9106 requires a salt of at least 8
 	// bytes — but this package adds no policy the construction does not
 	// have, matching the library underneath and other implementations.
-	if got := idKey(t, nil, nil, 32); len(got) != 32 {
-		t.Errorf("length = %d, want 32", len(got))
-	}
+	assert.Len(t, idKey(t, nil, nil, 32), 32)
 }
 
 func TestMemoryBytes(t *testing.T) {
@@ -270,9 +236,7 @@ func TestMemoryBytes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := MemoryBytes(tt.memory, tt.threads); got != tt.want {
-				t.Errorf("MemoryBytes(%d, %d) = %d, want %d", tt.memory, tt.threads, got, tt.want)
-			}
+			assert.Equal(t, tt.want, MemoryBytes(tt.memory, tt.threads))
 		})
 	}
 }

@@ -59,10 +59,16 @@ import (
 // Key derives keyLen bytes from password and salt by iterating
 // HMAC-h iter times, per RFC 8018.
 //
-// h is the hash to build the PRF from — sha2.New256 and friends. password
-// is a string rather than a byte slice because that is the shape it
-// almost always arrives in, and copying it into a slice to call this
-// would only spread the secret across more memory.
+// h is the hash to build the PRF from — sha2.New256 and friends.
+//
+// password is a []byte, unlike crypto/pbkdf2's own Key, which takes a
+// string. A password read from a terminal arrives as a slice —
+// golang.org/x/term.ReadPassword returns one — and turning it into a
+// string copies the secret into memory that can never be wiped, since
+// strings are immutable and there is nothing to zero afterwards. Taking a
+// slice lets the caller clear its own buffer, and matches argon2 and
+// scrypt here. The conversion still happens once inside, because the
+// standard library's signature requires it.
 //
 // It returns ErrInvalidIterations or ErrInvalidKeyLen for a non-positive
 // count or length, and the standard library's own error for a key length
@@ -79,12 +85,12 @@ import (
 // The result is key material, not a password hash to be stored: it is the
 // caller's job to keep the salt and parameters beside it, and to compare
 // with a constant-time comparison rather than ==.
-func Key(h func() hash.Hash, password string, salt []byte, iter, keyLen int) ([]byte, error) {
+func Key(h func() hash.Hash, password, salt []byte, iter, keyLen int) ([]byte, error) {
 	if iter < 1 {
 		return nil, ErrInvalidIterations
 	}
 	if keyLen < 1 {
 		return nil, ErrInvalidKeyLen
 	}
-	return pbkdf2.Key(h, password, salt, iter, keyLen)
+	return pbkdf2.Key(h, string(password), salt, iter, keyLen)
 }

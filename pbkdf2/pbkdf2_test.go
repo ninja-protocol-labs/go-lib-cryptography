@@ -1,13 +1,14 @@
 package pbkdf2
 
 import (
-	"bytes"
 	stdlib "crypto/pbkdf2"
 	"crypto/sha1"
 	"encoding/hex"
-	"errors"
 	"hash"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ninja-protocol-labs/go-lib-cryptography/sha2"
 )
@@ -56,26 +57,18 @@ var vectors = []struct {
 func mustDecodeHex(t *testing.T, s string) []byte {
 	t.Helper()
 	b, err := hex.DecodeString(s)
-	if err != nil {
-		t.Fatalf("bad test vector %q: %v", s, err)
-	}
+	require.NoError(t, err, "bad test vector %q", s)
 	return b
 }
 
 func TestKeyMatchesKnownAnswers(t *testing.T) {
 	for _, v := range vectors {
 		t.Run(v.name, func(t *testing.T) {
-			want := mustDecodeHex(t, v.want)
-			got, err := Key(v.h, v.password, []byte(v.salt), v.iter, v.keyLen)
-			if err != nil {
-				t.Fatalf("Key failed: %v", err)
-			}
-			if !bytes.Equal(got, want) {
-				t.Errorf("Key = %x, want %x", got, want)
-			}
-			if len(got) != v.keyLen {
-				t.Errorf("length = %d, want %d", len(got), v.keyLen)
-			}
+			got, err := Key(v.h, []byte(v.password), []byte(v.salt), v.iter, v.keyLen)
+			require.NoError(t, err)
+
+			assert.Equal(t, mustDecodeHex(t, v.want), got)
+			assert.Len(t, got, v.keyLen)
 		})
 	}
 }
@@ -84,24 +77,17 @@ func TestLongerKeyExtendsTheSameStream(t *testing.T) {
 	// PBKDF2 concatenates blocks T₁‖T₂‖…, so a longer derivation begins
 	// with the shorter one. Asking for more key material never invalidates
 	// what a shorter call produced.
-	short, err := Key(sha2.New256, "password", []byte("salt"), 4096, 32)
-	if err != nil {
-		t.Fatalf("Key failed: %v", err)
-	}
-	long, err := Key(sha2.New256, "password", []byte("salt"), 4096, 64)
-	if err != nil {
-		t.Fatalf("Key failed: %v", err)
-	}
-	if !bytes.Equal(short, long[:32]) {
-		t.Errorf("32-byte key = %x, prefix of the 64-byte one = %x", short, long[:32])
-	}
+	short, err := Key(sha2.New256, []byte("password"), []byte("salt"), 4096, 32)
+	require.NoError(t, err)
+	long, err := Key(sha2.New256, []byte("password"), []byte("salt"), 4096, 64)
+	require.NoError(t, err)
+
+	assert.Equal(t, short, long[:32])
 }
 
 func TestEveryInputChangesTheKey(t *testing.T) {
-	base, err := Key(sha2.New256, "password", []byte("salt"), 1000, 32)
-	if err != nil {
-		t.Fatalf("Key failed: %v", err)
-	}
+	base, err := Key(sha2.New256, []byte("password"), []byte("salt"), 1000, 32)
+	require.NoError(t, err)
 
 	tests := []struct {
 		name     string
@@ -119,29 +105,21 @@ func TestEveryInputChangesTheKey(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := Key(tt.h, tt.password, []byte(tt.salt), tt.iter, 32)
-			if err != nil {
-				t.Fatalf("Key failed: %v", err)
-			}
-			if bytes.Equal(got, base) {
-				t.Errorf("changing the %s did not change the key", tt.name)
-			}
+			got, err := Key(tt.h, []byte(tt.password), []byte(tt.salt), tt.iter, 32)
+			require.NoError(t, err)
+
+			assert.NotEqual(t, base, got, "changing the %s did not change the key", tt.name)
 		})
 	}
 }
 
 func TestKeyIsDeterministic(t *testing.T) {
-	a, err := Key(sha2.New256, "password", []byte("salt"), 1000, 32)
-	if err != nil {
-		t.Fatalf("Key failed: %v", err)
-	}
-	b, err := Key(sha2.New256, "password", []byte("salt"), 1000, 32)
-	if err != nil {
-		t.Fatalf("Key failed: %v", err)
-	}
-	if !bytes.Equal(a, b) {
-		t.Error("two identical derivations disagreed")
-	}
+	a, err := Key(sha2.New256, []byte("password"), []byte("salt"), 1000, 32)
+	require.NoError(t, err)
+	b, err := Key(sha2.New256, []byte("password"), []byte("salt"), 1000, 32)
+	require.NoError(t, err)
+
+	assert.Equal(t, a, b, "two identical derivations disagreed")
 }
 
 func TestKeyRejectsBadParameters(t *testing.T) {
@@ -158,10 +136,8 @@ func TestKeyRejectsBadParameters(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := Key(sha2.New256, "password", []byte("salt"), tt.iter, tt.keyLen)
-			if !errors.Is(err, tt.want) {
-				t.Errorf("error = %v, want %v", err, tt.want)
-			}
+			_, err := Key(sha2.New256, []byte("password"), []byte("salt"), tt.iter, tt.keyLen)
+			assert.ErrorIs(t, err, tt.want)
 		})
 	}
 }
@@ -174,20 +150,14 @@ func TestZeroIterationsWouldSilentlyDegrade(t *testing.T) {
 	// failing. This asserts that hazard is real in the layer below, so the
 	// check above is not cargo-culted — and that our Key refuses it.
 	weakest, err := stdlib.Key(sha2.New256, "password", []byte("salt"), 1, 32)
-	if err != nil {
-		t.Fatalf("Key failed: %v", err)
-	}
+	require.NoError(t, err)
 	degraded, err := stdlib.Key(sha2.New256, "password", []byte("salt"), 0, 32)
-	if err != nil {
-		t.Fatalf("the standard library rejected a zero count after all: %v", err)
-	}
-	if !bytes.Equal(degraded, weakest) {
-		t.Fatal("a zero count no longer collapses to one iteration; revisit ErrInvalidIterations")
-	}
+	require.NoError(t, err, "the standard library rejected a zero count after all")
+	require.Equal(t, weakest, degraded,
+		"a zero count no longer collapses to one iteration; revisit ErrInvalidIterations")
 
-	if _, err := Key(sha2.New256, "password", []byte("salt"), 0, 32); !errors.Is(err, ErrInvalidIterations) {
-		t.Errorf("this package accepted a zero count: err = %v", err)
-	}
+	_, err = Key(sha2.New256, []byte("password"), []byte("salt"), 0, 32)
+	assert.ErrorIs(t, err, ErrInvalidIterations, "this package accepted a zero count")
 }
 
 func TestEmptyPasswordAndSaltAreAllowed(t *testing.T) {
@@ -195,11 +165,26 @@ func TestEmptyPasswordAndSaltAreAllowed(t *testing.T) {
 	// does not add policy on top of the construction — an empty salt is
 	// the caller's mistake to make, and silently rejecting it would
 	// diverge from every other implementation.
-	got, err := Key(sha2.New256, "", nil, 1000, 32)
-	if err != nil {
-		t.Fatalf("Key failed: %v", err)
-	}
-	if len(got) != 32 {
-		t.Errorf("length = %d, want 32", len(got))
+	got, err := Key(sha2.New256, nil, nil, 1000, 32)
+	require.NoError(t, err)
+	assert.Len(t, got, 32)
+}
+
+// Key takes a []byte password where crypto/pbkdf2 takes a string, so that
+// a caller reading a password into a slice can wipe it afterwards and so
+// that all three KDFs in this module agree. The conversion has to stay
+// faithful, embedded NULs and invalid UTF-8 included — neither is a
+// hypothetical, since a password is arbitrary bytes.
+func TestPasswordSliceMatchesTheStandardLibrarysString(t *testing.T) {
+	for _, password := range []string{"password", "pass\x00word", "\xff\xfe\x00"} {
+		t.Run(hex.EncodeToString([]byte(password)), func(t *testing.T) {
+			got, err := Key(sha2.New256, []byte(password), []byte("salt"), 100, 32)
+			require.NoError(t, err)
+
+			want, err := stdlib.Key(sha2.New256, password, []byte("salt"), 100, 32)
+			require.NoError(t, err)
+
+			assert.Equal(t, want, got)
+		})
 	}
 }

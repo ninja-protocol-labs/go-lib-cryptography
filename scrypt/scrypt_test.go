@@ -1,11 +1,11 @@
 package scrypt
 
 import (
-	"bytes"
 	"encoding/hex"
-	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	upstream "golang.org/x/crypto/scrypt"
 )
 
@@ -53,18 +53,14 @@ const (
 func mustDecodeHex(t *testing.T, s string) []byte {
 	t.Helper()
 	b, err := hex.DecodeString(s)
-	if err != nil {
-		t.Fatalf("bad test vector %q: %v", s, err)
-	}
+	require.NoError(t, err, "bad test vector %q", s)
 	return b
 }
 
 func key(t *testing.T, password, salt string, keyLen int) []byte {
 	t.Helper()
 	k, err := Key([]byte(password), []byte(salt), testN, testR, testP, keyLen)
-	if err != nil {
-		t.Fatalf("Key failed: %v", err)
-	}
+	require.NoError(t, err)
 	return k
 }
 
@@ -73,12 +69,9 @@ func TestKeyMatchesKnownAnswers(t *testing.T) {
 		t.Run(v.name, func(t *testing.T) {
 			want := mustDecodeHex(t, v.want)
 			got, err := Key([]byte(v.password), []byte(v.salt), v.N, v.r, v.p, len(want))
-			if err != nil {
-				t.Fatalf("Key failed: %v", err)
-			}
-			if !bytes.Equal(got, want) {
-				t.Errorf("Key = %x, want %x", got, want)
-			}
+			require.NoError(t, err)
+
+			assert.Equal(t, want, got)
 		})
 	}
 }
@@ -89,15 +82,14 @@ func TestLongerKeyExtendsTheSameStream(t *testing.T) {
 	// more key material never invalidates what a shorter call produced.
 	short := key(t, "password", "salt", 32)
 	long := key(t, "password", "salt", 64)
-	if !bytes.Equal(short, long[:32]) {
-		t.Errorf("32-byte key = %x, prefix of the 64-byte one = %x", short, long[:32])
-	}
+
+	assert.Equal(t, short, long[:32])
 }
 
 func TestKeyIsDeterministic(t *testing.T) {
-	if a, b := key(t, "password", "salt", 32), key(t, "password", "salt", 32); !bytes.Equal(a, b) {
-		t.Error("two identical derivations disagreed")
-	}
+	a, b := key(t, "password", "salt", 32), key(t, "password", "salt", 32)
+
+	assert.Equal(t, a, b, "two identical derivations disagreed")
 }
 
 func TestEveryInputChangesTheKey(t *testing.T) {
@@ -120,12 +112,9 @@ func TestEveryInputChangesTheKey(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := Key([]byte(tt.password), []byte(tt.salt), tt.N, tt.r, tt.p, 32)
-			if err != nil {
-				t.Fatalf("Key failed: %v", err)
-			}
-			if bytes.Equal(got, base) {
-				t.Errorf("changing %s did not change the key", tt.name)
-			}
+			require.NoError(t, err)
+
+			assert.NotEqual(t, base, got, "changing %s did not change the key", tt.name)
 		})
 	}
 }
@@ -133,9 +122,7 @@ func TestEveryInputChangesTheKey(t *testing.T) {
 func TestKeyRejectsBadKeyLen(t *testing.T) {
 	for _, keyLen := range []int{0, -1} {
 		_, err := Key([]byte("password"), []byte("salt"), testN, testR, testP, keyLen)
-		if !errors.Is(err, ErrInvalidKeyLen) {
-			t.Errorf("Key(keyLen=%d) error = %v, want ErrInvalidKeyLen", keyLen, err)
-		}
+		assert.ErrorIs(t, err, ErrInvalidKeyLen, "keyLen=%d", keyLen)
 	}
 }
 
@@ -148,22 +135,13 @@ func TestZeroKeyLenWouldPanic(t *testing.T) {
 	//
 	// Asserting the hazard is real below us keeps the guard above from being
 	// cargo-culted, and tells us if upstream ever fixes it.
-	func() {
-		defer func() {
-			if recover() == nil {
-				t.Error("upstream no longer panics on a zero key length; revisit ErrInvalidKeyLen")
-			}
-		}()
-		_, err := upstream.Key([]byte("password"), []byte("salt"), testN, testR, testP, 0)
-		if err != nil {
-			t.Errorf("Key failed: %v", err)
-		}
-	}()
+	assert.Panics(t, func() {
+		_, _ = upstream.Key([]byte("password"), []byte("salt"), testN, testR, testP, 0)
+	}, "upstream no longer panics on a zero key length; revisit ErrInvalidKeyLen")
 
 	// And this package turns it into an error instead.
-	if _, err := Key([]byte("password"), []byte("salt"), testN, testR, testP, 0); !errors.Is(err, ErrInvalidKeyLen) {
-		t.Errorf("this package accepted a zero key length: err = %v", err)
-	}
+	_, err := Key([]byte("password"), []byte("salt"), testN, testR, testP, 0)
+	assert.ErrorIs(t, err, ErrInvalidKeyLen, "this package accepted a zero key length")
 }
 
 func TestKeyRejectsBadCostParameters(t *testing.T) {
@@ -185,9 +163,8 @@ func TestKeyRejectsBadCostParameters(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := Key([]byte("password"), []byte("salt"), tt.N, tt.r, tt.p, 32); err == nil {
-				t.Error("Key accepted invalid cost parameters")
-			}
+			_, err := Key([]byte("password"), []byte("salt"), tt.N, tt.r, tt.p, 32)
+			assert.Error(t, err, "Key accepted invalid cost parameters")
 		})
 	}
 }
@@ -196,9 +173,7 @@ func TestEmptyPasswordAndSaltAreAllowed(t *testing.T) {
 	// Neither is a good idea, but scrypt defines both — RFC 7914's first
 	// vector uses exactly that — and this package adds no policy on top of
 	// the construction.
-	if got := key(t, "", "", 32); len(got) != 32 {
-		t.Errorf("length = %d, want 32", len(got))
-	}
+	assert.Len(t, key(t, "", "", 32), 32)
 }
 
 func TestMemoryBytes(t *testing.T) {
@@ -216,9 +191,7 @@ func TestMemoryBytes(t *testing.T) {
 		{1 << 20, 32, 4 << 30},
 	}
 	for _, tt := range tests {
-		if got := MemoryBytes(tt.N, tt.r); got != tt.want {
-			t.Errorf("MemoryBytes(%d, %d) = %d, want %d", tt.N, tt.r, got, tt.want)
-		}
+		assert.Equal(t, tt.want, MemoryBytes(tt.N, tt.r), "N=%d r=%d", tt.N, tt.r)
 	}
 }
 
@@ -226,13 +199,8 @@ func TestMemoryBytesScalesWithNAndR(t *testing.T) {
 	// 128·N·r should scale linearly in both, and p must not enter into it —
 	// the property that makes p the wrong knob for making scrypt harder.
 	base := MemoryBytes(testN, testR)
-	if got := MemoryBytes(testN*2, testR); got != base*2 {
-		t.Errorf("doubling N gave %d, want %d", got, base*2)
-	}
-	if got := MemoryBytes(testN, testR*2); got != base*2 {
-		t.Errorf("doubling r gave %d, want %d", got, base*2)
-	}
-	if base != 128*testN*testR {
-		t.Errorf("MemoryBytes = %d, want %d", base, 128*testN*testR)
-	}
+
+	assert.Equal(t, base*2, MemoryBytes(testN*2, testR), "doubling N")
+	assert.Equal(t, base*2, MemoryBytes(testN, testR*2), "doubling r")
+	assert.Equal(t, int64(128*testN*testR), base)
 }

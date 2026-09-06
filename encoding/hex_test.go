@@ -2,8 +2,10 @@ package encoding
 
 import (
 	"bytes"
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHexRoundTrip(t *testing.T) {
@@ -17,24 +19,20 @@ func TestHexRoundTrip(t *testing.T) {
 	}
 	for _, in := range cases {
 		s := Hex.Encode(in)
+
 		got, err := Hex.Decode(s)
-		if err != nil {
-			t.Fatalf("Decode(%q) failed: %v", s, err)
-		}
-		if !bytes.Equal(got, in) {
-			t.Errorf("round trip of %x = %x", in, got)
-		}
+		require.NoError(t, err, "Decode(%q)", s)
+		// bytes.Equal, not assert.Equal: a nil input round-trips to an
+		// empty slice, which is the same bytes and a different value.
+		assert.True(t, bytes.Equal(in, got), "round trip of %x = %x", in, got)
 	}
 }
 
 func TestHexEncodeIsLowercaseAndUnprefixed(t *testing.T) {
 	in := []byte{0xde, 0xad, 0xbe, 0xef}
-	if got, want := Hex.Encode(in), "deadbeef"; got != want {
-		t.Errorf("Encode = %q, want %q", got, want)
-	}
-	if got, want := Hex.EncodePrefixed(in), "0xdeadbeef"; got != want {
-		t.Errorf("EncodePrefixed = %q, want %q", got, want)
-	}
+
+	assert.Equal(t, "deadbeef", Hex.Encode(in))
+	assert.Equal(t, "0xdeadbeef", Hex.EncodePrefixed(in))
 }
 
 func TestHexDecodeNormalises(t *testing.T) {
@@ -50,12 +48,8 @@ func TestHexDecodeNormalises(t *testing.T) {
 		"0XdeadBEEF",
 	} {
 		got, err := Hex.Decode(s)
-		if err != nil {
-			t.Fatalf("Decode(%q) failed: %v", s, err)
-		}
-		if !bytes.Equal(got, want) {
-			t.Errorf("Decode(%q) = %x, want %x", s, got, want)
-		}
+		require.NoError(t, err, "Decode(%q)", s)
+		assert.Equal(t, want, got, "Decode(%q)", s)
 	}
 }
 
@@ -77,9 +71,8 @@ func TestHexDecodeRejectsBadInput(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := Hex.Decode(tt.in); !errors.Is(err, tt.want) {
-				t.Errorf("Decode(%q) error = %v, want %v", tt.in, err, tt.want)
-			}
+			_, err := Hex.Decode(tt.in)
+			assert.ErrorIs(t, err, tt.want, "Decode(%q)", tt.in)
 		})
 	}
 }
@@ -87,18 +80,12 @@ func TestHexDecodeRejectsBadInput(t *testing.T) {
 func TestHexDecodeIntoChecksLength(t *testing.T) {
 	// The form that pairs with this module's fixed-size arrays.
 	var k [4]byte
-	if err := Hex.DecodeInto(k[:], "0xdeadbeef"); err != nil {
-		t.Fatalf("DecodeInto failed: %v", err)
-	}
-	if want := [4]byte{0xde, 0xad, 0xbe, 0xef}; k != want {
-		t.Errorf("DecodeInto wrote %x, want %x", k, want)
-	}
+	require.NoError(t, Hex.DecodeInto(k[:], "0xdeadbeef"))
+	assert.Equal(t, [4]byte{0xde, 0xad, 0xbe, 0xef}, k)
 
 	for _, s := range []string{"deadbe", "deadbeef00"} {
 		var short [4]byte
-		if err := Hex.DecodeInto(short[:], s); !errors.Is(err, ErrInvalidLength) {
-			t.Errorf("DecodeInto(%q) error = %v, want ErrInvalidLength", s, err)
-		}
+		assert.ErrorIs(t, Hex.DecodeInto(short[:], s), ErrInvalidLength, "DecodeInto(%q)", s)
 	}
 }
 
@@ -106,10 +93,7 @@ func TestHexDecodeIntoLeavesDestinationAloneOnError(t *testing.T) {
 	// A rejected decode must not half-fill the destination, or a caller
 	// that ignores the error gets a key made of two different strings.
 	k := [4]byte{1, 2, 3, 4}
-	if err := Hex.DecodeInto(k[:], "ffffff"); err == nil {
-		t.Fatal("DecodeInto accepted the wrong length")
-	}
-	if want := [4]byte{1, 2, 3, 4}; k != want {
-		t.Errorf("destination was modified: %x, want %x", k, want)
-	}
+
+	require.Error(t, Hex.DecodeInto(k[:], "ffffff"), "DecodeInto accepted the wrong length")
+	assert.Equal(t, [4]byte{1, 2, 3, 4}, k, "destination was modified")
 }

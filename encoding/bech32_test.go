@@ -2,9 +2,11 @@ package encoding
 
 import (
 	"bytes"
-	"errors"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // The valid-string vectors from BIP-173 (bech32) and BIP-350 (bech32m).
@@ -27,14 +29,12 @@ var (
 
 func TestBech32DecodesSpecVectors(t *testing.T) {
 	for _, s := range validBech32 {
-		if _, _, err := Bech32.Decode(s); err != nil {
-			t.Errorf("Bech32.Decode(%q) failed: %v", s, err)
-		}
+		_, _, err := Bech32.Decode(s)
+		assert.NoError(t, err, "Bech32.Decode(%q)", s)
 	}
 	for _, s := range validBech32m {
-		if _, _, err := Bech32m.Decode(s); err != nil {
-			t.Errorf("Bech32m.Decode(%q) failed: %v", s, err)
-		}
+		_, _, err := Bech32m.Decode(s)
+		assert.NoError(t, err, "Bech32m.Decode(%q)", s)
 	}
 }
 
@@ -44,14 +44,12 @@ func TestBech32AndBech32mRejectEachOther(t *testing.T) {
 	// the same shape of hazard as SHA-3 against Keccak, so it is asserted
 	// rather than only documented.
 	for _, s := range validBech32 {
-		if _, _, err := Bech32m.Decode(s); !errors.Is(err, ErrInvalidChecksum) {
-			t.Errorf("Bech32m accepted the bech32 string %q: err = %v", s, err)
-		}
+		_, _, err := Bech32m.Decode(s)
+		assert.ErrorIs(t, err, ErrInvalidChecksum, "Bech32m accepted the bech32 string %q", s)
 	}
 	for _, s := range validBech32m {
-		if _, _, err := Bech32.Decode(s); !errors.Is(err, ErrInvalidChecksum) {
-			t.Errorf("Bech32 accepted the bech32m string %q: err = %v", s, err)
-		}
+		_, _, err := Bech32.Decode(s)
+		assert.ErrorIs(t, err, ErrInvalidChecksum, "Bech32 accepted the bech32m string %q", s)
 	}
 }
 
@@ -68,19 +66,13 @@ func TestBech32RoundTrip(t *testing.T) {
 				bytes.Repeat([]byte{0xff}, 20),
 			} {
 				s, err := c.enc.EncodeBytes("abc", payload)
-				if err != nil {
-					t.Fatalf("EncodeBytes(%x) failed: %v", payload, err)
-				}
+				require.NoError(t, err, "EncodeBytes(%x)", payload)
+
 				hrp, got, err := c.enc.DecodeBytes(s)
-				if err != nil {
-					t.Fatalf("DecodeBytes(%q) failed: %v", s, err)
-				}
-				if hrp != "abc" {
-					t.Errorf("hrp = %q, want abc", hrp)
-				}
-				if !bytes.Equal(got, payload) {
-					t.Errorf("round trip of %x = %x", payload, got)
-				}
+				require.NoError(t, err, "DecodeBytes(%q)", s)
+
+				assert.Equal(t, "abc", hrp)
+				assert.True(t, bytes.Equal(payload, got), "round trip of %x = %x", payload, got)
 			}
 		})
 	}
@@ -89,31 +81,25 @@ func TestBech32RoundTrip(t *testing.T) {
 func TestBech32CaseRules(t *testing.T) {
 	// BIP-173 defines the encoding as case-insensitive, so an all-upper or
 	// all-lower string is fine and a mixed one has already been mangled.
-	if _, _, err := Bech32.Decode("A12UEL5L"); err != nil {
-		t.Errorf("uppercase rejected: %v", err)
-	}
-	if _, _, err := Bech32.Decode("a12uel5l"); err != nil {
-		t.Errorf("lowercase rejected: %v", err)
-	}
-	if _, _, err := Bech32.Decode("A12uel5l"); !errors.Is(err, ErrMalformed) {
-		t.Errorf("mixed case: err = %v, want ErrMalformed", err)
-	}
+	_, _, err := Bech32.Decode("A12UEL5L")
+	assert.NoError(t, err, "uppercase rejected")
+
+	_, _, err = Bech32.Decode("a12uel5l")
+	assert.NoError(t, err, "lowercase rejected")
+
+	_, _, err = Bech32.Decode("A12uel5l")
+	assert.ErrorIs(t, err, ErrMalformed, "mixed case")
 }
 
 func TestBech32SeparatorIsTheLastOne(t *testing.T) {
 	// '1' is excluded from the data alphabet precisely so the last one is
 	// unambiguously the separator, even when the prefix contains one.
 	s, err := Bech32.EncodeBytes("a1b", []byte{0x01, 0x02})
-	if err != nil {
-		t.Fatalf("EncodeBytes failed: %v", err)
-	}
+	require.NoError(t, err)
+
 	hrp, _, err := Bech32.DecodeBytes(s)
-	if err != nil {
-		t.Fatalf("DecodeBytes(%q) failed: %v", s, err)
-	}
-	if hrp != "a1b" {
-		t.Errorf("hrp = %q, want a1b", hrp)
-	}
+	require.NoError(t, err, "DecodeBytes(%q)", s)
+	assert.Equal(t, "a1b", hrp)
 }
 
 func TestBech32RejectsMalformed(t *testing.T) {
@@ -130,9 +116,8 @@ func TestBech32RejectsMalformed(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, _, err := Bech32.Decode(tt.in); !errors.Is(err, tt.want) {
-				t.Errorf("Decode(%q) error = %v, want %v", tt.in, err, tt.want)
-			}
+			_, _, err := Bech32.Decode(tt.in)
+			assert.ErrorIs(t, err, tt.want, "Decode(%q)", tt.in)
 		})
 	}
 }
@@ -140,13 +125,11 @@ func TestBech32RejectsMalformed(t *testing.T) {
 func TestBech32HRPRules(t *testing.T) {
 	// BIP-173 restricts the prefix to printable ASCII with no uppercase.
 	for _, hrp := range []string{"", "AB", "a b", "a\x7f"} {
-		if _, err := Bech32.Encode(hrp, nil); !errors.Is(err, ErrMalformed) {
-			t.Errorf("Encode with hrp %q: err = %v, want ErrMalformed", hrp, err)
-		}
+		_, err := Bech32.Encode(hrp, nil)
+		assert.ErrorIs(t, err, ErrMalformed, "Encode with hrp %q", hrp)
 	}
-	if _, err := Bech32.Encode("?", nil); err != nil {
-		t.Errorf("Encode with hrp %q failed: %v", "?", err)
-	}
+	_, err := Bech32.Encode("?", nil)
+	assert.NoError(t, err, `Encode with hrp "?"`)
 }
 
 func TestBech32LengthLimit(t *testing.T) {
@@ -155,37 +138,28 @@ func TestBech32LengthLimit(t *testing.T) {
 	// exceed it deliberately, which is what the Unlimited pair is for.
 	long := bytes.Repeat([]byte{0xff}, 60) // well past 90 characters encoded
 
-	if _, err := Bech32.EncodeBytes("abc", long); !errors.Is(err, ErrMalformed) {
-		t.Errorf("Encode past the limit: err = %v, want ErrMalformed", err)
-	}
+	_, err := Bech32.EncodeBytes("abc", long)
+	assert.ErrorIs(t, err, ErrMalformed, "Encode past the limit")
 
 	converted, err := ConvertBits(long, 8, 5, true)
-	if err != nil {
-		t.Fatalf("ConvertBits failed: %v", err)
-	}
+	require.NoError(t, err)
 	s, err := Bech32.EncodeUnlimited("abc", converted)
-	if err != nil {
-		t.Fatalf("EncodeUnlimited failed: %v", err)
-	}
-	if len(s) <= MaxBech32Len {
-		t.Fatalf("test premise is wrong: %d characters", len(s))
-	}
+	require.NoError(t, err)
+	require.Greater(t, len(s), MaxBech32Len, "test premise is wrong")
 
-	if _, _, err := Bech32.Decode(s); !errors.Is(err, ErrMalformed) {
-		t.Errorf("Decode past the limit: err = %v, want ErrMalformed", err)
-	}
-	if _, _, err := Bech32.DecodeUnlimited(s); err != nil {
-		t.Errorf("DecodeUnlimited failed: %v", err)
-	}
+	_, _, err = Bech32.Decode(s)
+	assert.ErrorIs(t, err, ErrMalformed, "Decode past the limit")
+
+	_, _, err = Bech32.DecodeUnlimited(s)
+	assert.NoError(t, err)
 }
 
 func TestBech32DataMustBeFiveBit(t *testing.T) {
 	// Encode takes the data part already converted, so a value that does
 	// not fit in five bits is a caller error rather than something to
 	// silently truncate.
-	if _, err := Bech32.Encode("a", []byte{32}); !errors.Is(err, ErrMalformed) {
-		t.Errorf("Encode with a six-bit value: err = %v, want ErrMalformed", err)
-	}
+	_, err := Bech32.Encode("a", []byte{32})
+	assert.ErrorIs(t, err, ErrMalformed, "Encode with a six-bit value")
 }
 
 func TestConvertBits(t *testing.T) {
@@ -195,40 +169,27 @@ func TestConvertBits(t *testing.T) {
 	in := []byte{0xde, 0xad, 0xbe, 0xef}
 
 	five, err := ConvertBits(in, 8, 5, true)
-	if err != nil {
-		t.Fatalf("8->5 failed: %v", err)
-	}
+	require.NoError(t, err, "8->5")
 	for _, v := range five {
-		if v>>5 != 0 {
-			t.Fatalf("8->5 produced %d, which does not fit in five bits", v)
-		}
+		require.Zero(t, v>>5, "8->5 produced %d, which does not fit in five bits", v)
 	}
 
 	back, err := ConvertBits(five, 5, 8, false)
-	if err != nil {
-		t.Fatalf("5->8 failed: %v", err)
-	}
-	if !bytes.Equal(back, in) {
-		t.Errorf("round trip = %x, want %x", back, in)
-	}
+	require.NoError(t, err, "5->8")
+	assert.Equal(t, in, back)
 
 	// Non-zero padding is rejected.
 	dirty := append([]byte(nil), five...)
 	dirty[len(dirty)-1] |= 1
-	if _, err := ConvertBits(dirty, 5, 8, false); !errors.Is(err, ErrMalformed) {
-		t.Errorf("5->8 with non-zero padding: err = %v, want ErrMalformed", err)
-	}
+	_, err = ConvertBits(dirty, 5, 8, false)
+	assert.ErrorIs(t, err, ErrMalformed, "5->8 with non-zero padding")
 }
 
 func TestBech32CharsetExcludesConfusableCharacters(t *testing.T) {
 	// 1, b, i and o are absent so that nothing in the data part can be
 	// mistaken for something else when read aloud or copied by hand.
 	for _, ch := range "1bio" {
-		if strings.ContainsRune(Bech32Charset, ch) {
-			t.Errorf("the charset contains %q", ch)
-		}
+		assert.False(t, strings.ContainsRune(Bech32Charset, ch), "the charset contains %q", ch)
 	}
-	if len(Bech32Charset) != 32 {
-		t.Errorf("charset is %d characters, want 32", len(Bech32Charset))
-	}
+	assert.Len(t, Bech32Charset, 32)
 }
