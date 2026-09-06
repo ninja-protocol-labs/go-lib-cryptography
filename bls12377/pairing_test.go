@@ -6,7 +6,7 @@ import (
 )
 
 func TestG1PointFromCompressedRoundTrip(t *testing.T) {
-	pub := privKeyN(t, 40).PublicKeyMinPk()
+	pub := g1PointN(t, 40)
 	b := pub.Bytes()
 	p, err := G1PointFromCompressed(b[:])
 	if err != nil {
@@ -18,7 +18,7 @@ func TestG1PointFromCompressedRoundTrip(t *testing.T) {
 }
 
 func TestG2PointFromCompressedRoundTrip(t *testing.T) {
-	pub := privKeyN(t, 40).PublicKeyMinSig()
+	pub := g2PointN(t, 40)
 	b := pub.Bytes()
 	p, err := G2PointFromCompressed(b[:])
 	if err != nil {
@@ -30,10 +30,10 @@ func TestG2PointFromCompressedRoundTrip(t *testing.T) {
 }
 
 func TestPointFromCompressedRejectsGarbage(t *testing.T) {
-	if _, err := G1PointFromCompressed(bytes.Repeat([]byte{0xff}, PubkeyMinPkLen)); err == nil {
+	if _, err := G1PointFromCompressed(bytes.Repeat([]byte{0xff}, G1CompressedLen)); err == nil {
 		t.Error("G1PointFromCompressed accepted garbage")
 	}
-	if _, err := G2PointFromCompressed(bytes.Repeat([]byte{0xff}, PubkeyMinSigLen)); err == nil {
+	if _, err := G2PointFromCompressed(bytes.Repeat([]byte{0xff}, G2CompressedLen)); err == nil {
 		t.Error("G2PointFromCompressed accepted garbage")
 	}
 	if _, err := G1PointFromCompressed(nil); err == nil {
@@ -47,11 +47,11 @@ func TestG1ArithmeticAgreesWithScalarMult(t *testing.T) {
 	if added := g.Add(g); doubled != added {
 		t.Error("G1Generator().Double() != G1Generator().Add(itself)")
 	}
-	if mult := g.Mul(scalarN(2)); mult != doubled {
+	if mult := g.Mul(scalarArrN(t, 2)); mult != doubled {
 		t.Error("G1Generator().Mul(2) != G1Generator().Double()")
 	}
 	// 3G = 2G + G, reached two ways.
-	if g.Mul(scalarN(3)) != doubled.Add(g) {
+	if g.Mul(scalarArrN(t, 3)) != doubled.Add(g) {
 		t.Error("G1Generator().Mul(3) != 2G + G")
 	}
 }
@@ -62,7 +62,7 @@ func TestG2ArithmeticAgreesWithScalarMult(t *testing.T) {
 	if added := g.Add(g); doubled != added {
 		t.Error("G2Generator().Double() != G2Generator().Add(itself)")
 	}
-	if mult := g.Mul(scalarN(2)); mult != doubled {
+	if mult := g.Mul(scalarArrN(t, 2)); mult != doubled {
 		t.Error("G2Generator().Mul(2) != G2Generator().Double()")
 	}
 }
@@ -83,7 +83,7 @@ func TestNeg(t *testing.T) {
 }
 
 func TestHashToCurveIsDeterministicAndDomainSeparated(t *testing.T) {
-	dst := []byte(DefaultDSTMinSig)
+	dst := testDST
 
 	a, err := HashToG1(testMsg, dst)
 	if err != nil {
@@ -105,11 +105,11 @@ func TestHashToCurveIsDeterministicAndDomainSeparated(t *testing.T) {
 		t.Error("HashToG1 ignored the domain separation tag")
 	}
 
-	c, err := HashToG2(testMsg, []byte(DefaultDSTMinPk))
+	c, err := HashToG2(testMsg, testDST)
 	if err != nil {
 		t.Fatalf("HashToG2 failed: %v", err)
 	}
-	d, err := HashToG2(testMsg, []byte(DefaultDSTMinPk))
+	d, err := HashToG2(testMsg, testDST)
 	if err != nil {
 		t.Fatalf("HashToG2 failed: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestHashToCurveIsDeterministicAndDomainSeparated(t *testing.T) {
 }
 
 func TestEncodeToCurveDiffersFromHashToCurve(t *testing.T) {
-	dst := []byte(DefaultDSTMinSig)
+	dst := testDST
 	h, err := HashToG1(testMsg, dst)
 	if err != nil {
 		t.Fatalf("HashToG1 failed: %v", err)
@@ -214,15 +214,15 @@ func TestPairingBilinearity(t *testing.T) {
 	// e(15G1, G2) == e(G1, 15G2).
 	g1, g2 := G1Generator(), G2Generator()
 
-	lhs, err := Pair(g2.Mul(scalarN(5)), g1.Mul(scalarN(3)))
+	lhs, err := Pair(g2.Mul(scalarArrN(t, 5)), g1.Mul(scalarArrN(t, 3)))
 	if err != nil {
 		t.Fatalf("Pair failed: %v", err)
 	}
-	viaG1, err := Pair(g2, g1.Mul(scalarN(15)))
+	viaG1, err := Pair(g2, g1.Mul(scalarArrN(t, 15)))
 	if err != nil {
 		t.Fatalf("Pair failed: %v", err)
 	}
-	viaG2, err := Pair(g2.Mul(scalarN(15)), g1)
+	viaG2, err := Pair(g2.Mul(scalarArrN(t, 15)), g1)
 	if err != nil {
 		t.Fatalf("Pair failed: %v", err)
 	}
@@ -255,7 +255,7 @@ func TestMillerLoopAgreesWithLinesPrecompute(t *testing.T) {
 
 func TestMillerLoopNAgreesWithGTMul(t *testing.T) {
 	g1, g2 := G1Generator(), G2Generator()
-	pkBytes := privKeyN(t, 41).PublicKeyMinPk().Bytes()
+	pkBytes := g1PointN(t, 41).Bytes()
 	pkA, err := G1PointFromCompressed(pkBytes[:])
 	if err != nil {
 		t.Fatalf("G1PointFromCompressed failed: %v", err)
@@ -345,30 +345,24 @@ func TestFinalVerify(t *testing.T) {
 	}
 }
 
-func TestVerifyMinPkAsARawPairingEquation(t *testing.T) {
-	// The same check VerifyMinPk performs, spelled out with this file's
-	// primitives: e(pk, H(m)) * e(-G1, sig) == 1.
-	priv := privKeyN(t, 42)
-	pkBytes := priv.PublicKeyMinPk().Bytes()
-	pk, err := G1PointFromCompressed(pkBytes[:])
-	if err != nil {
-		t.Fatalf("G1PointFromCompressed failed: %v", err)
-	}
-	sigBytes := signMinPk(t, priv, testMsg)
-	sig, err := G2PointFromCompressed(sigBytes[:])
-	if err != nil {
-		t.Fatalf("G2PointFromCompressed failed: %v", err)
-	}
-	h, err := HashToG2(testMsg, []byte(DefaultDSTMinPk))
+func TestBLSVerificationEquation(t *testing.T) {
+	// The equation a BLS signature satisfies, written with this package's
+	// primitives alone: with pk = x*G1 and sig = x*H(m),
+	// e(pk, H(m)) * e(-G1, sig) == 1.
+	x := scalarArrN(t, 42)
+	pk := G1Generator().Mul(x)
+
+	h, err := HashToG2(testMsg, testDST)
 	if err != nil {
 		t.Fatalf("HashToG2 failed: %v", err)
 	}
+	sig := h.Mul(x)
 
 	ok, err := PairingCheck([]G2Point{h, sig}, []G1Point{pk, G1Generator().Neg()})
 	if err != nil {
 		t.Fatalf("PairingCheck failed: %v", err)
 	}
 	if !ok {
-		t.Error("the min-pk verification equation did not hold for a genuine signature")
+		t.Error("the BLS verification equation did not hold")
 	}
 }

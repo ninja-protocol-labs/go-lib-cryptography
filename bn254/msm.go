@@ -16,7 +16,7 @@ import (
 // Unlike bls12381's MSM there is no bit-width argument: blst has to be
 // told how many bits of each scalar to walk, gnark-crypto reads that from
 // the scalars themselves.
-func MultiScalarMultG1(points []G1Point, scalars [][SeckeyLen]byte) (G1Point, error) {
+func MultiScalarMultG1(points []G1Point, scalars [][ScalarLen]byte) (G1Point, error) {
 	var zero G1Point
 	if len(points) != len(scalars) {
 		return zero, ErrLengthMismatch
@@ -40,7 +40,7 @@ func MultiScalarMultG1(points []G1Point, scalars [][SeckeyLen]byte) (G1Point, er
 }
 
 // MultiScalarMultG2 is MultiScalarMultG1's mirror in G2.
-func MultiScalarMultG2(points []G2Point, scalars [][SeckeyLen]byte) (G2Point, error) {
+func MultiScalarMultG2(points []G2Point, scalars [][ScalarLen]byte) (G2Point, error) {
 	var zero G2Point
 	if len(points) != len(scalars) {
 		return zero, ErrLengthMismatch
