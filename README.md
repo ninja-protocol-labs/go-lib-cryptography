@@ -2,8 +2,15 @@
 
 [![CI](https://github.com/ninja-protocol-labs/go-lib-cryptography/actions/workflows/ci.yml/badge.svg)](https://github.com/ninja-protocol-labs/go-lib-cryptography/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/ninja-protocol-labs/go-lib-cryptography.svg)](https://pkg.go.dev/github.com/ninja-protocol-labs/go-lib-cryptography)
-[![Go Report Card](https://goreportcard.com/badge/github.com/ninja-protocol-labs/go-lib-cryptography)](https://goreportcard.com/report/github.com/ninja-protocol-labs/go-lib-cryptography)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+[![ubuntu-amd64](https://img.shields.io/github/check-runs/ninja-protocol-labs/go-lib-cryptography/main?nameFilter=Verify%20%2F%20amd64&label=ubuntu-amd64)](https://github.com/ninja-protocol-labs/go-lib-cryptography/actions/workflows/ci.yml)
+[![ubuntu-arm64](https://img.shields.io/github/check-runs/ninja-protocol-labs/go-lib-cryptography/main?nameFilter=Verify%20%2F%20arm64&label=ubuntu-arm64)](https://github.com/ninja-protocol-labs/go-lib-cryptography/actions/workflows/ci.yml)
+[![race](https://img.shields.io/github/check-runs/ninja-protocol-labs/go-lib-cryptography/main?nameFilter=Race&label=race)](https://github.com/ninja-protocol-labs/go-lib-cryptography/actions/workflows/ci.yml)
+[![darwin-amd64](https://img.shields.io/github/check-runs/ninja-protocol-labs/go-lib-cryptography/main?nameFilter=Cross%20compile%20%2F%20darwin-amd64&label=darwin-amd64)](https://github.com/ninja-protocol-labs/go-lib-cryptography/actions/workflows/ci.yml)
+[![darwin-arm64](https://img.shields.io/github/check-runs/ninja-protocol-labs/go-lib-cryptography/main?nameFilter=Cross%20compile%20%2F%20darwin-arm64&label=darwin-arm64)](https://github.com/ninja-protocol-labs/go-lib-cryptography/actions/workflows/ci.yml)
+[![windows-amd64](https://img.shields.io/github/check-runs/ninja-protocol-labs/go-lib-cryptography/main?nameFilter=Cross%20compile%20%2F%20windows-amd64&label=windows-amd64)](https://github.com/ninja-protocol-labs/go-lib-cryptography/actions/workflows/ci.yml)
+[![js-wasm](https://img.shields.io/github/check-runs/ninja-protocol-labs/go-lib-cryptography/main?nameFilter=Cross%20compile%20%2F%20js-wasm&label=js-wasm)](https://github.com/ninja-protocol-labs/go-lib-cryptography/actions/workflows/ci.yml)
 
 Cryptographic primitives in pure Go: elliptic curves and signatures, byte and
 field hashes, password KDFs, and the text encodings that go with them.
@@ -11,11 +18,12 @@ field hashes, password KDFs, and the text encodings that go with them.
 No cgo, no nested package hierarchy, no interfaces to learn — every package
 sits directly under the module root and they all have the same shape.
 
-```
-go get github.com/ninja-protocol-labs/go-lib-cryptography
+```sh
+go get github.com/ninja-protocol-labs/go-lib-cryptography@v0.1.0
 ```
 
-Requires Go 1.27.
+Requires Go 1.27. API documentation is available on
+[pkg.go.dev](https://pkg.go.dev/github.com/ninja-protocol-labs/go-lib-cryptography).
 
 ## Packages
 
