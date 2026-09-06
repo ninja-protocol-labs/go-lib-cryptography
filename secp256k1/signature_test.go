@@ -2,6 +2,7 @@ package secp256k1
 
 import (
 	"bytes"
+	"encoding/hex"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -132,4 +133,22 @@ func TestSignatureEqual(t *testing.T) {
 	assert.False(t, a.Equal(b))
 	assert.False(t, a.Equal(nil))
 	assert.False(t, a.Equal(negateS(t, a)))
+}
+
+func TestSignatureIsZero(t *testing.T) {
+	var uninit Signature
+	var nilSig *Signature
+
+	sig, _, _ := testSignature(t)
+
+	assert.True(t, uninit.IsZero())
+	assert.True(t, nilSig.IsZero())
+	assert.False(t, sig.IsZero())
+}
+
+func TestSignatureString(t *testing.T) {
+	sig, _, _ := testSignature(t)
+
+	b := sig.Bytes()
+	assert.Equal(t, hex.EncodeToString(b[:]), sig.String())
 }
