@@ -6,6 +6,9 @@ import (
 	"errors"
 	"hash"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // testMsg is "abc", the input the sha2, sha3 and keccak packages hash too.
@@ -64,20 +67,41 @@ func digests() []digest {
 	return []digest{
 		{
 			"BLAKE2b-256", Size256,
-			func(b []byte) []byte { d := Sum256(b); return d[:] },
-			func(k, b []byte) ([]byte, error) { d, err := SumKeyed256(k, b); return d[:], err },
+			func(b []byte) []byte { d := Hash256(b).Bytes(); return d[:] },
+			func(k, msg []byte) ([]byte, error) {
+				d, err := HashKeyed256(k, msg)
+				if err != nil {
+					return nil, err
+				}
+				b := d.Bytes()
+				return b[:], nil
+			},
 			New256, abcBlake2b256, keyedBlake2b256,
 		},
 		{
 			"BLAKE2b-384", Size384,
-			func(b []byte) []byte { d := Sum384(b); return d[:] },
-			func(k, b []byte) ([]byte, error) { d, err := SumKeyed384(k, b); return d[:], err },
+			func(b []byte) []byte { d := Hash384(b).Bytes(); return d[:] },
+			func(k, msg []byte) ([]byte, error) {
+				d, err := HashKeyed384(k, msg)
+				if err != nil {
+					return nil, err
+				}
+				b := d.Bytes()
+				return b[:], nil
+			},
 			New384, abcBlake2b384, "",
 		},
 		{
 			"BLAKE2b-512", Size512,
-			func(b []byte) []byte { d := Sum512(b); return d[:] },
-			func(k, b []byte) ([]byte, error) { d, err := SumKeyed512(k, b); return d[:], err },
+			func(b []byte) []byte { d := Hash512(b).Bytes(); return d[:] },
+			func(k, msg []byte) ([]byte, error) {
+				d, err := HashKeyed512(k, msg)
+				if err != nil {
+					return nil, err
+				}
+				b := d.Bytes()
+				return b[:], nil
+			},
 			New512, abcBlake2b512, keyedBlake2b512,
 		},
 	}
@@ -97,87 +121,66 @@ func TestSumMatchesKnownAnswer(t *testing.T) {
 	}
 }
 
-func TestSumKeyedMatchesKnownAnswer(t *testing.T) {
+func TestHashKeyedMatchesKnownAnswer(t *testing.T) {
 	for _, d := range digests() {
 		if d.keyed == "" {
 			continue
 		}
 		t.Run(d.name, func(t *testing.T) {
-			want := mustDecodeHex(t, d.keyed)
 			got, err := d.sumK(testKey, testMsg)
-			if err != nil {
-				t.Fatalf("SumKeyed failed: %v", err)
-			}
-			if !bytes.Equal(got, want) {
-				t.Errorf("SumKeyed = %x, want %x", got, want)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, mustDecodeHex(t, d.keyed), got)
 		})
 	}
 }
 
-func TestSumKeyedWithNilKeyEqualsUnkeyed(t *testing.T) {
+func TestHashKeyedWithNilKeyEqualsUnkeyed(t *testing.T) {
 	for _, d := range digests() {
 		t.Run(d.name, func(t *testing.T) {
 			got, err := d.sumK(nil, testMsg)
-			if err != nil {
-				t.Fatalf("SumKeyed failed: %v", err)
-			}
-			if want := d.sum(testMsg); !bytes.Equal(got, want) {
-				t.Errorf("keyed with nil = %x, unkeyed = %x", got, want)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, d.sum(testMsg), got)
 		})
 	}
 }
 
 func TestKeyChangesTheDigest(t *testing.T) {
-	a, err := SumKeyed256(testKey, testMsg)
-	if err != nil {
-		t.Fatalf("SumKeyed256 failed: %v", err)
-	}
+	a, err := HashKeyed256(testKey, testMsg)
+	require.NoError(t, err)
+
 	other := bytes.Clone(testKey)
 	other[0] ^= 0x01
-	b, err := SumKeyed256(other, testMsg)
-	if err != nil {
-		t.Fatalf("SumKeyed256 failed: %v", err)
-	}
-	if a == b {
-		t.Error("two different keys produced the same MAC")
-	}
-	if a == Sum256(testMsg) {
-		t.Error("the keyed digest equals the unkeyed one")
-	}
+	b, err := HashKeyed256(other, testMsg)
+	require.NoError(t, err)
+
+	assert.False(t, a.Equal(b), "two different keys produced the same MAC")
+	assert.False(t, a.Equal(Hash256(testMsg)), "the keyed digest equals the unkeyed one")
 }
 
-func TestSumOfEmptyInput(t *testing.T) {
-	if got, want := Sum256(nil), mustDecodeHex(t, emptyBlake2b256); !bytes.Equal(got[:], want) {
-		t.Errorf("Sum256(nil) = %x, want %x", got, want)
-	}
-	if got, want := Sum512(nil), mustDecodeHex(t, emptyBlake2b512); !bytes.Equal(got[:], want) {
-		t.Errorf("Sum512(nil) = %x, want %x", got, want)
-	}
-	if Sum256(nil) != Sum256([]byte{}) {
-		t.Error("Sum256(nil) != Sum256(empty slice)")
-	}
+func TestHashOfEmptyInput(t *testing.T) {
+	got256 := Hash256(nil).Bytes()
+	assert.Equal(t, mustDecodeHex(t, emptyBlake2b256), got256[:])
+
+	got512 := Hash512(nil).Bytes()
+	assert.Equal(t, mustDecodeHex(t, emptyBlake2b512), got512[:])
+
+	assert.True(t, Hash256(nil).Equal(Hash256([]byte{})))
 }
 
 func TestStreamingAgreesWithOneShot(t *testing.T) {
 	for _, d := range digests() {
 		t.Run(d.name, func(t *testing.T) {
 			h, err := d.new(nil)
-			if err != nil {
-				t.Fatalf("New failed: %v", err)
-			}
-			if h.Size() != d.size {
-				t.Errorf("Size() = %d, want %d", h.Size(), d.size)
-			}
-			if h.BlockSize() != BlockSize {
-				t.Errorf("BlockSize() = %d, want %d", h.BlockSize(), BlockSize)
-			}
-			h.Write(testMsg[:1])
-			h.Write(testMsg[1:])
-			if got, want := h.Sum(nil), d.sum(testMsg); !bytes.Equal(got, want) {
-				t.Errorf("streaming = %x, one-shot = %x", got, want)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, d.size, h.Size())
+			assert.Equal(t, BlockSize, h.BlockSize())
+
+			_, err = h.Write(testMsg[:1])
+			require.NoError(t, err)
+			_, err = h.Write(testMsg[1:])
+			require.NoError(t, err)
+
+			assert.Equal(t, d.sum(testMsg), h.Sum(nil))
 		})
 	}
 }
@@ -186,21 +189,19 @@ func TestStreamingResetIsReusable(t *testing.T) {
 	for _, d := range digests() {
 		t.Run(d.name, func(t *testing.T) {
 			h, err := d.new(testKey)
-			if err != nil {
-				t.Fatalf("New failed: %v", err)
-			}
-			h.Write([]byte("something else entirely"))
+			require.NoError(t, err)
+
+			_, err = h.Write([]byte("something else entirely"))
+			require.NoError(t, err)
 			h.Reset()
-			h.Write(testMsg)
+			_, err = h.Write(testMsg)
+			require.NoError(t, err)
 
 			want, err := d.sumK(testKey, testMsg)
-			if err != nil {
-				t.Fatalf("SumKeyed failed: %v", err)
-			}
+			require.NoError(t, err)
+
 			// Reset must keep the key, not drop back to unkeyed.
-			if got := h.Sum(nil); !bytes.Equal(got, want) {
-				t.Errorf("after Reset = %x, want %x", got, want)
-			}
+			assert.Equal(t, want, h.Sum(nil))
 		})
 	}
 }
@@ -209,18 +210,17 @@ func TestDigestSizeIsAParameterNotATruncation(t *testing.T) {
 	// The headline difference from truncating a hash by hand: the output
 	// length is mixed into the initial state, so shorter digests are
 	// different functions, not prefixes of longer ones.
-	full := Sum512(testMsg)
-	short := Sum256(testMsg)
-	if bytes.Equal(short[:], full[:Size256]) {
-		t.Error("Sum256 equals the first 32 bytes of Sum512")
-	}
-	if got, want := Sum384(testMsg), full[:Size384]; bytes.Equal(got[:], want) {
-		t.Error("Sum384 equals the first 48 bytes of Sum512")
-	}
+	full := Hash512(testMsg).Bytes()
+
+	short := Hash256(testMsg).Bytes()
+	assert.NotEqual(t, full[:Size256], short[:])
+
+	mid := Hash384(testMsg).Bytes()
+	assert.NotEqual(t, full[:Size384], mid[:])
 }
 
 func TestNewAtArbitrarySizes(t *testing.T) {
-	// New(32, nil) must agree with Sum256, and odd sizes must match the
+	// New(32, nil) must agree with Hash256, and odd sizes must match the
 	// external vectors — proof that size really is a parameter.
 	tests := []struct {
 		size int
@@ -262,7 +262,7 @@ func TestNewRejectsBadParameters(t *testing.T) {
 			t.Errorf("%s New with an oversized key error = %v, want ErrKeyTooLong", d.name, err)
 		}
 		if _, err := d.sumK(longKey, testMsg); !errors.Is(err, ErrKeyTooLong) {
-			t.Errorf("%s SumKeyed with an oversized key error = %v, want ErrKeyTooLong", d.name, err)
+			t.Errorf("%s HashKeyed with an oversized key error = %v, want ErrKeyTooLong", d.name, err)
 		}
 	}
 	// A key of exactly MaxKeyLen is allowed.

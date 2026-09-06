@@ -1,12 +1,13 @@
 // Package sha2 is the public API for the SHA-2 family (FIPS 180-4). Each
-// digest gets its own file: sha224.go, sha256.go, sha384.go, sha512.go,
-// sha512_224.go and sha512_256.go.
+// digest gets its own file and its own Digest type: sha224.go, sha256.go,
+// sha384.go, sha512.go, sha512_224.go and sha512_256.go.
 //
 // This is a thin wrapper over crypto/sha256 and crypto/sha512, and
 // deliberately adds nothing to them: the standard library's shape — a
-// one-shot SumN returning a fixed-size array, and a NewN returning a
-// streaming hash.Hash — is already what this module's own conventions
-// would produce. It exists so that every hash in this module is reached
+// one-shot function per digest and a NewN returning a streaming
+// hash.Hash — is already close to what this module's own conventions
+// produce. The one-shot returns a DigestN rather than a bare array, so
+// that two digests of the same length cannot be swapped for each other. It exists so that every hash in this module is reached
 // through one import root, including the ones the standard library does
 // not provide (keccak, blake2b, ripemd160, poseidon), and so that
 // swapping an implementation later is not a breaking change for callers.
@@ -14,10 +15,10 @@
 // The one place this departs from the standard library is the package
 // split. crypto puts SHA-256 and SHA-512 in separate packages; here they
 // are one package named for the family, so that it sits alongside sha3 as
-// its counterpart and SumN reads the same way in both — sha2.Sum256 and
-// sha3.Sum256 are the two functions a caller is actually choosing
+// its counterpart and HashN reads the same way in both — sha2.Hash256 and
+// sha3.Hash256 are the two functions a caller is actually choosing
 // between. Merging any further is not possible: SHA-256 and SHA3-256
-// cannot both be Sum256 in one package.
+// cannot both be Hash256 in one package.
 //
 // # Two compression functions, six digests
 //
@@ -39,8 +40,8 @@
 //
 // SHA-224, SHA-256, SHA-384 and SHA-512 are Merkle-Damgård constructions
 // whose digest is their entire final state, so an attacker who knows
-// Sum256(secret ∥ m) and len(secret) can compute
-// Sum256(secret ∥ m ∥ padding ∥ suffix) without knowing secret. Never use
+// Hash256(secret ∥ m) and len(secret) can compute
+// Hash256(secret ∥ m ∥ padding ∥ suffix) without knowing secret. Never use
 // a raw hash as a message authentication code: use HMAC (crypto/hmac).
 //
 // SHA-512/224 and SHA-512/256 withhold most of their state and so are not
@@ -63,4 +64,14 @@ const (
 	// SHA-512/224 and SHA-512/256 — twice BlockSize256, which is where
 	// their throughput advantage on 64-bit hardware comes from.
 	BlockSize512 = sha512.BlockSize
+)
+
+// Digest lengths. Each is also the length of the matching Digest type.
+const (
+	Size224     = sha256.Size224
+	Size256     = sha256.Size
+	Size384     = sha512.Size384
+	Size512     = sha512.Size
+	Size512_224 = sha512.Size224
+	Size512_256 = sha512.Size256
 )

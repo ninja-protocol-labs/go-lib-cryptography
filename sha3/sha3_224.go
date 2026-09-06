@@ -1,29 +1,25 @@
-package sha2
+package sha3
 
 import (
-	"crypto/sha256"
+	"crypto/sha3"
 	"hash"
 
 	"github.com/ninja-protocol-labs/go-lib-cryptography/encoding"
 )
 
-// Digest224 is a SHA-224 digest.
+// Digest224 is a SHA3-224 digest.
 type Digest224 struct {
 	b [Size224]byte
 }
 
-// Hash224 returns the SHA-224 digest of data.
-//
-// SHA-224 is SHA-256 truncated to 28 bytes from a different initial
-// state. It is length-extendable in the same way SHA-256 is; the
-// truncation does not withhold enough state to prevent it.
+// Hash224 returns the SHA3-224 digest of data.
 func Hash224(data []byte) *Digest224 {
 	return &Digest224{
-		b: sha256.Sum224(data),
+		b: sha3.Sum224(data),
 	}
 }
 
-// Digest224FromBytes wraps bytes that are already a SHA-224 digest, as
+// Digest224FromBytes wraps bytes that are already a SHA3-224 digest, as
 // one read off the wire or out of storage.
 func Digest224FromBytes(b []byte) (*Digest224, error) {
 	if len(b) != Size224 {
@@ -35,11 +31,11 @@ func Digest224FromBytes(b []byte) (*Digest224, error) {
 	}, nil
 }
 
-// New224 returns a streaming SHA-224 hash, for data that does not
-// arrive in one piece. Its Sum appends to the slice it is given, unlike
-// Hash224's Digest224.
+// New224 returns a streaming SHA3-224 hash, for data that does not arrive
+// in one piece. Its Sum appends to the slice it is given, unlike Hash224's
+// Digest224.
 func New224() hash.Hash {
-	return sha256.New224()
+	return sha3.New224()
 }
 
 func (d *Digest224) Bytes() [Size224]byte {

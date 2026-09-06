@@ -3,8 +3,13 @@ package blake2b
 import "errors"
 
 // Sentinel errors. Only the keyed and variable-size constructors can
-// fail; the fixed-size unkeyed Sum functions cannot, and return no error.
+// fail; the fixed-size unkeyed Hash functions cannot, and return no error.
 var (
+	// ErrInvalidDigest means bytes handed to a DigestNNNFromBytes were not
+	// that digest's length. There is nothing else to check: every string of
+	// the right length is a possible BLAKE2b digest.
+	ErrInvalidDigest = errors.New("blake2b: invalid digest")
+
 	// ErrKeyTooLong means the key is longer than MaxKeyLen. BLAKE2b takes
 	// the key as a prefix block rather than through HMAC's outer/inner
 	// padding, so it cannot absorb a key longer than one block half.

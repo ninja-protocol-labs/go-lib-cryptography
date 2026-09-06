@@ -1,29 +1,25 @@
-package sha2
+package sha3
 
 import (
-	"crypto/sha512"
+	"crypto/sha3"
 	"hash"
 
 	"github.com/ninja-protocol-labs/go-lib-cryptography/encoding"
 )
 
-// Digest512 is a SHA-512 digest.
+// Digest512 is a SHA3-512 digest.
 type Digest512 struct {
 	b [Size512]byte
 }
 
-// Hash512 returns the SHA-512 digest of data.
-//
-// The 64-bit compression function absorbs twice as much per round as
-// SHA-256's, and is faster per byte on 64-bit hardware without SHA-256
-// instructions. It is length-extendable.
+// Hash512 returns the SHA3-512 digest of data.
 func Hash512(data []byte) *Digest512 {
 	return &Digest512{
-		b: sha512.Sum512(data),
+		b: sha3.Sum512(data),
 	}
 }
 
-// Digest512FromBytes wraps bytes that are already a SHA-512 digest, as
+// Digest512FromBytes wraps bytes that are already a SHA3-512 digest, as
 // one read off the wire or out of storage.
 func Digest512FromBytes(b []byte) (*Digest512, error) {
 	if len(b) != Size512 {
@@ -35,11 +31,11 @@ func Digest512FromBytes(b []byte) (*Digest512, error) {
 	}, nil
 }
 
-// New512 returns a streaming SHA-512 hash, for data that does not
-// arrive in one piece. Its Sum appends to the slice it is given, unlike
-// Hash512's Digest512.
+// New512 returns a streaming SHA3-512 hash, for data that does not arrive
+// in one piece. Its Sum appends to the slice it is given, unlike Hash512's
+// Digest512.
 func New512() hash.Hash {
-	return sha512.New()
+	return sha3.New512()
 }
 
 func (d *Digest512) Bytes() [Size512]byte {

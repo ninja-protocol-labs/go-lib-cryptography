@@ -19,8 +19,8 @@ func readXOF(t *testing.T, x *XOF, in []byte, n int) []byte {
 }
 
 func TestXOFMatchesOfficialVectors(t *testing.T) {
-	// The XOF is not a separate function — it is the same stream Sum256
-	// and Sum512 return prefixes of, so the upstream vectors apply to it
+	// The XOF is not a separate function — it is the same stream Hash256
+	// and Hash512 return prefixes of, so the upstream vectors apply to it
 	// directly.
 	for _, c := range vectorCases {
 		t.Run(name(c.inputLen), func(t *testing.T) {
@@ -44,15 +44,15 @@ func TestKeyedXOFMatchesOfficialVectors(t *testing.T) {
 	}
 }
 
-func TestXOFAgreesWithTheSumFunctions(t *testing.T) {
+func TestXOFAgreesWithTheHashFunctions(t *testing.T) {
 	in := vectorInput(2049)
 
 	stream := readXOF(t, NewXOF(), in, Size512)
-	if s256 := Sum256(in); !bytes.Equal(stream[:Size256], s256[:]) {
-		t.Error("the XOF's first 32 bytes are not Sum256")
+	if s256 := Hash256(in).Bytes(); !bytes.Equal(stream[:Size256], s256[:]) {
+		t.Error("the XOF's first 32 bytes are not Hash256")
 	}
-	if s512 := Sum512(in); !bytes.Equal(stream, s512[:]) {
-		t.Error("the XOF's first 64 bytes are not Sum512")
+	if s512 := Hash512(in).Bytes(); !bytes.Equal(stream, s512[:]) {
+		t.Error("the XOF's first 64 bytes are not Hash512")
 	}
 }
 

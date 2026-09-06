@@ -1,11 +1,13 @@
 package blake3
 
 import (
-	"bytes"
 	"encoding/hex"
 	"errors"
 	"strconv"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // vectorInput builds the upstream suite's input of length n: the bytes
@@ -24,9 +26,7 @@ func vectorInput(n int) []byte {
 // take. The upstream key is exactly KeyLen bytes, which this asserts.
 func vectorKeyArray(t *testing.T) [KeyLen]byte {
 	t.Helper()
-	if len(vectorKey) != KeyLen {
-		t.Fatalf("upstream key is %d bytes, want %d", len(vectorKey), KeyLen)
-	}
+
 	return [KeyLen]byte([]byte(vectorKey))
 }
 
@@ -39,35 +39,33 @@ func mustDecodeHex(t *testing.T, s string) []byte {
 	return b
 }
 
-func TestSumMatchesOfficialVectors(t *testing.T) {
+func TestHashMatchesOfficialVectors(t *testing.T) {
 	for _, c := range vectorCases {
 		t.Run(name(c.inputLen), func(t *testing.T) {
 			in := vectorInput(c.inputLen)
 			want := mustDecodeHex(t, c.hash)
 
-			if got := Sum256(in); !bytes.Equal(got[:], want[:Size256]) {
-				t.Errorf("Sum256 = %x, want %x", got, want[:Size256])
-			}
-			if got := Sum512(in); !bytes.Equal(got[:], want[:Size512]) {
-				t.Errorf("Sum512 = %x, want %x", got, want[:Size512])
-			}
+			got256 := Hash256(in).Bytes()
+			assert.Equal(t, want[:Size256], got256[:])
+
+			got512 := Hash512(in).Bytes()
+			assert.Equal(t, want[:Size512], got512[:])
 		})
 	}
 }
 
-func TestSumKeyedMatchesOfficialVectors(t *testing.T) {
+func TestHashKeyedMatchesOfficialVectors(t *testing.T) {
 	key := vectorKeyArray(t)
 	for _, c := range vectorCases {
 		t.Run(name(c.inputLen), func(t *testing.T) {
 			in := vectorInput(c.inputLen)
 			want := mustDecodeHex(t, c.keyedHash)
 
-			if got := SumKeyed256(key, in); !bytes.Equal(got[:], want[:Size256]) {
-				t.Errorf("SumKeyed256 = %x, want %x", got, want[:Size256])
-			}
-			if got := SumKeyed512(key, in); !bytes.Equal(got[:], want[:Size512]) {
-				t.Errorf("SumKeyed512 = %x, want %x", got, want[:Size512])
-			}
+			got256 := HashKeyed256(key, in).Bytes()
+			assert.Equal(t, want[:Size256], got256[:])
+
+			got512 := HashKeyed512(key, in).Bytes()
+			assert.Equal(t, want[:Size512], got512[:])
 		})
 	}
 }
@@ -78,20 +76,16 @@ func TestEveryLengthIsAPrefixOfTheSameStream(t *testing.T) {
 	// different functions.
 	in := vectorInput(2049)
 
-	s256, s512 := Sum256(in), Sum512(in)
-	if !bytes.Equal(s256[:], s512[:Size256]) {
-		t.Error("Sum256 is not the first 32 bytes of Sum512")
-	}
+	s256, s512 := Hash256(in).Bytes(), Hash512(in).Bytes()
+	assert.Equal(t, s512[:Size256], s256[:], "Hash256 is not the first 32 bytes of Hash512")
 
 	h, err := New(200)
-	if err != nil {
-		t.Fatalf("New failed: %v", err)
-	}
-	h.Write(in)
+	require.NoError(t, err)
+	_, err = h.Write(in)
+	require.NoError(t, err)
+
 	long := h.Sum(nil)
-	if !bytes.Equal(s512[:], long[:Size512]) {
-		t.Error("Sum512 is not the first 64 bytes of a 200-byte digest")
-	}
+	assert.Equal(t, long[:Size512], s512[:], "Hash512 is not the first 64 bytes of a 200-byte digest")
 }
 
 func TestStreamingAgreesWithOneShot(t *testing.T) {
@@ -100,22 +94,18 @@ func TestStreamingAgreesWithOneShot(t *testing.T) {
 	in := vectorInput(3072)
 
 	h := New256()
-	if h.Size() != Size256 {
-		t.Errorf("Size() = %d, want %d", h.Size(), Size256)
-	}
-	if h.BlockSize() != BlockSize {
-		t.Errorf("BlockSize() = %d, want %d", h.BlockSize(), BlockSize)
-	}
+	assert.Equal(t, Size256, h.Size())
+	assert.Equal(t, BlockSize, h.BlockSize())
+
 	for _, n := range []int{1, 1022, 3, 1000, 46, 1000} {
-		h.Write(in[:n])
+		_, err := h.Write(in[:n])
+		require.NoError(t, err)
 		in = in[n:]
 	}
-	if len(in) != 0 {
-		t.Fatalf("test bug: %d bytes left unwritten", len(in))
-	}
-	if got, want := h.Sum(nil), Sum256(vectorInput(3072)); !bytes.Equal(got, want[:]) {
-		t.Errorf("streaming = %x, one-shot = %x", got, want)
-	}
+	require.Empty(t, in, "test bug: bytes left unwritten")
+
+	want := Hash256(vectorInput(3072)).Bytes()
+	assert.Equal(t, want[:], h.Sum(nil))
 }
 
 func TestStreamingResetKeepsTheKey(t *testing.T) {
@@ -123,31 +113,30 @@ func TestStreamingResetKeepsTheKey(t *testing.T) {
 	in := vectorInput(1025)
 
 	h := NewKeyed256(key)
-	h.Write([]byte("something else entirely"))
+	_, err := h.Write([]byte("something else entirely"))
+	require.NoError(t, err)
 	h.Reset()
-	h.Write(in)
+	_, err = h.Write(in)
+	require.NoError(t, err)
 
-	if got, want := h.Sum(nil), SumKeyed256(key, in); !bytes.Equal(got, want[:]) {
-		t.Errorf("after Reset = %x, want %x", got, want)
-	}
+	want := HashKeyed256(key, in).Bytes()
+	assert.Equal(t, want[:], h.Sum(nil))
+
 	// And specifically did not fall back to unkeyed.
-	if unkeyed := Sum256(in); bytes.Equal(h.Sum(nil)[:Size256], unkeyed[:]) {
-		t.Error("Reset dropped the key")
-	}
+	unkeyed := Hash256(in).Bytes()
+	assert.NotEqual(t, unkeyed[:], h.Sum(nil)[:Size256], "Reset dropped the key")
 }
 
 func TestKeyedIsDomainSeparatedFromUnkeyed(t *testing.T) {
 	key := vectorKeyArray(t)
 	in := vectorInput(64)
-	if a, b := SumKeyed256(key, in), Sum256(in); a == b {
-		t.Error("keyed and unkeyed modes produced the same digest")
-	}
+	assert.False(t, HashKeyed256(key, in).Equal(Hash256(in)),
+		"keyed and unkeyed modes produced the same digest")
 
 	other := key
 	other[0] ^= 0x01
-	if a, b := SumKeyed256(key, in), SumKeyed256(other, in); a == b {
-		t.Error("two different keys produced the same MAC")
-	}
+	assert.False(t, HashKeyed256(key, in).Equal(HashKeyed256(other, in)),
+		"two different keys produced the same MAC")
 }
 
 func TestNewRejectsSizeBelowOne(t *testing.T) {
@@ -164,6 +153,9 @@ func TestNewRejectsSizeBelowOne(t *testing.T) {
 	if _, err := New(1 << 20); err != nil {
 		t.Errorf("New(1<<20) failed: %v", err)
 	}
+	if _, err := NewKeyed(1<<20, key); err != nil {
+		t.Errorf("NewKeyed(1<<20) failed: %v", err)
+	}
 }
 
 // name labels a subtest by input length, calling out the ones that sit on
@@ -174,4 +166,24 @@ func name(n int) string {
 		return "len" + strconv.Itoa(n) + "_chunkBoundary"
 	}
 	return "len" + strconv.Itoa(n)
+}
+
+// The 512-bit streaming constructors, which the one-shot vectors above do
+// not reach. Every length is a prefix of the same stream, so each must
+// agree with its one-shot counterpart.
+func TestStreaming512AgreesWithOneShot(t *testing.T) {
+	key := vectorKeyArray(t)
+	in := vectorInput(1025)
+
+	h := New512()
+	_, err := h.Write(in)
+	require.NoError(t, err)
+	want := Hash512(in).Bytes()
+	assert.Equal(t, want[:], h.Sum(nil))
+
+	hk := NewKeyed512(key)
+	_, err = hk.Write(in)
+	require.NoError(t, err)
+	wantK := HashKeyed512(key, in).Bytes()
+	assert.Equal(t, wantK[:], hk.Sum(nil))
 }

@@ -9,25 +9,18 @@ import "crypto/sha3"
 // matter how many bytes you read, and reading fewer than 32 gives you less
 // than that. It is not "SHAKE with a 128-bit output".
 
-const (
-	// BlockSizeSHAKE128 and BlockSizeSHAKE256 are the two SHAKE rates:
-	// the 200-byte state minus twice the security level.
-	BlockSizeSHAKE128 = stateSize - 2*16
-	BlockSizeSHAKE256 = stateSize - 2*32
-)
-
-// SumSHAKE128 returns length bytes of SHAKE128 output over data.
+// HashSHAKE128 returns length bytes of SHAKE128 output over data.
 //
-// This and SumSHAKE256 are the only functions in this package returning a
-// slice rather than a fixed-size array, and for exactly the reason the
-// module's convention reserves that for: the output length is the
-// caller's choice, so it genuinely is not knowable from the type.
-func SumSHAKE128(data []byte, length int) []byte {
+// This and HashSHAKE256 are the only functions in this package returning a
+// slice rather than a Digest, and for exactly the reason the module's
+// convention reserves that for: the output length is the caller's choice,
+// so it genuinely is not knowable from the type.
+func HashSHAKE128(data []byte, length int) []byte {
 	return sha3.SumSHAKE128(data, length)
 }
 
-// SumSHAKE256 returns length bytes of SHAKE256 output over data.
-func SumSHAKE256(data []byte, length int) []byte {
+// HashSHAKE256 returns length bytes of SHAKE256 output over data.
+func HashSHAKE256(data []byte, length int) []byte {
 	return sha3.SumSHAKE256(data, length)
 }
 

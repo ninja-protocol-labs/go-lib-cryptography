@@ -1,29 +1,36 @@
-package sha2
+package keccak
 
 import (
-	"crypto/sha256"
 	"hash"
+
+	"golang.org/x/crypto/sha3"
 
 	"github.com/ninja-protocol-labs/go-lib-cryptography/encoding"
 )
 
-// Digest256 is a SHA-256 digest.
+// Digest256 is a Keccak-256 digest — Ethereum's keccak256, not SHA3-256.
 type Digest256 struct {
 	b [Size256]byte
 }
 
-// Hash256 returns the SHA-256 digest of data.
+// Hash256 returns the Keccak-256 digest of data.
 //
-// This is the family's default, and the one with dedicated instructions
-// on most current hardware. Note that it is length-extendable: see the
-// package doc before using it over anything secret.
+// This is the hash Ethereum calls keccak256: the KECCAK256 opcode, address
+// derivation and every ABI selector. It is not SHA3-256; see the package
+// doc.
 func Hash256(data []byte) *Digest256 {
+	var b [Size256]byte
+
+	h := sha3.NewLegacyKeccak256()
+	h.Write(data)
+	h.Sum(b[:0])
+
 	return &Digest256{
-		b: sha256.Sum256(data),
+		b: b,
 	}
 }
 
-// Digest256FromBytes wraps bytes that are already a SHA-256 digest, as
+// Digest256FromBytes wraps bytes that are already a Keccak-256 digest, as
 // one read off the wire or out of storage.
 func Digest256FromBytes(b []byte) (*Digest256, error) {
 	if len(b) != Size256 {
@@ -35,11 +42,11 @@ func Digest256FromBytes(b []byte) (*Digest256, error) {
 	}, nil
 }
 
-// New256 returns a streaming SHA-256 hash, for data that does not
+// New256 returns a streaming Keccak-256 hash, for data that does not
 // arrive in one piece. Its Sum appends to the slice it is given, unlike
 // Hash256's Digest256.
 func New256() hash.Hash {
-	return sha256.New()
+	return sha3.NewLegacyKeccak256()
 }
 
 func (d *Digest256) Bytes() [Size256]byte {

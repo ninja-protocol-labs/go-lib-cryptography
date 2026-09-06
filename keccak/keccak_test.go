@@ -1,10 +1,12 @@
 package keccak
 
 import (
-	"bytes"
 	"encoding/hex"
 	"hash"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ninja-protocol-labs/go-lib-cryptography/sha3"
 )
@@ -45,115 +47,96 @@ type digest struct {
 
 func digests() []digest {
 	return []digest{
-		{"Keccak-256", Size256, BlockSize256, func(b []byte) []byte { d := Sum256(b); return d[:] }, New256, abcKeccak256, emptyKeccak256},
-		{"Keccak-512", Size512, BlockSize512, func(b []byte) []byte { d := Sum512(b); return d[:] }, New512, abcKeccak512, emptyKeccak512},
+		{"Keccak-256", Size256, BlockSize256, func(b []byte) []byte { d := Hash256(b).Bytes(); return d[:] }, New256, abcKeccak256, emptyKeccak256},
+		{"Keccak-512", Size512, BlockSize512, func(b []byte) []byte { d := Hash512(b).Bytes(); return d[:] }, New512, abcKeccak512, emptyKeccak512},
 	}
 }
 
-func TestSumMatchesKnownAnswer(t *testing.T) {
+func TestHashMatchesKnownAnswer(t *testing.T) {
 	for _, d := range digests() {
 		t.Run(d.name, func(t *testing.T) {
 			want := mustDecodeHex(t, d.abc)
-			if got := d.sum(testMsg); !bytes.Equal(got, want) {
-				t.Errorf("Sum(%q) = %x, want %x", testMsg, got, want)
-			}
-			if len(want) != d.size {
-				t.Errorf("vector length = %d, want %d", len(want), d.size)
-			}
+			require.Len(t, want, d.size, "bad vector")
+
+			assert.Equal(t, want, d.sum(testMsg))
 		})
 	}
 }
 
-func TestSumOfEmptyInput(t *testing.T) {
-	// Nothing but padding — and for Keccak-256 the single most recognized
-	// vector there is, since Ethereum stores it as the code hash of every
-	// account without code.
+// Nothing but padding — and for Keccak-256 the single most recognized
+// vector there is, since Ethereum stores it as the code hash of every
+// account without code.
+func TestHashOfEmptyInput(t *testing.T) {
 	for _, d := range digests() {
 		t.Run(d.name, func(t *testing.T) {
 			want := mustDecodeHex(t, d.empty)
-			if got := d.sum(nil); !bytes.Equal(got, want) {
-				t.Errorf("Sum(nil) = %x, want %x", got, want)
-			}
-			if got := d.sum([]byte{}); !bytes.Equal(got, want) {
-				t.Errorf("Sum(empty slice) = %x, want %x", got, want)
-			}
+
+			assert.Equal(t, want, d.sum(nil))
+			assert.Equal(t, want, d.sum([]byte{}))
 		})
 	}
 }
 
+// Hash256 and Hash512 are this package's own, built on top of the
+// streaming hash upstream provides — so unlike the other hash packages
+// here, this is checking code we wrote, not just a re-export.
 func TestStreamingAgreesWithOneShot(t *testing.T) {
-	// Sum256/Sum512 are this package's own, built on top of the streaming
-	// hash upstream provides — so unlike the other hash packages here,
-	// this is checking code we wrote, not just a re-export.
 	for _, d := range digests() {
 		t.Run(d.name, func(t *testing.T) {
 			h := d.new()
-			if h.Size() != d.size {
-				t.Errorf("New().Size() = %d, want %d", h.Size(), d.size)
-			}
-			if h.BlockSize() != d.block {
-				t.Errorf("New().BlockSize() = %d, want %d", h.BlockSize(), d.block)
-			}
-			h.Write(testMsg[:1])
-			h.Write(testMsg[1:])
-			if got, want := h.Sum(nil), d.sum(testMsg); !bytes.Equal(got, want) {
-				t.Errorf("streaming = %x, one-shot = %x", got, want)
-			}
+			assert.Equal(t, d.size, h.Size())
+			assert.Equal(t, d.block, h.BlockSize())
+
+			_, err := h.Write(testMsg[:1])
+			require.NoError(t, err)
+			_, err = h.Write(testMsg[1:])
+			require.NoError(t, err)
+
+			assert.Equal(t, d.sum(testMsg), h.Sum(nil))
 		})
 	}
 }
 
-func TestSumDoesNotAliasOrOverrun(t *testing.T) {
-	// Sum256 sums into out[:0], relying on append not reallocating when
-	// the capacity is exactly the digest length. If that ever stopped
-	// holding, the returned array would be zero instead of the digest.
-	got := Sum256(testMsg)
-	if got == ([Size256]byte{}) {
-		t.Fatal("Sum256 returned an all-zero array")
-	}
-	// Two calls must not share state.
-	if Sum256(testMsg) != got {
-		t.Error("two calls to Sum256 disagreed")
-	}
+// Hash256 sums into b[:0], relying on append not reallocating when the
+// capacity is exactly the digest length. If that ever stopped holding, the
+// digest would come back all zero.
+func TestHashDoesNotAliasOrOverrun(t *testing.T) {
+	got := Hash256(testMsg)
+
+	assert.False(t, got.IsZero())
+	assert.True(t, got.Equal(Hash256(testMsg)))
 }
 
 func TestStreamingResetIsReusable(t *testing.T) {
 	for _, d := range digests() {
 		t.Run(d.name, func(t *testing.T) {
 			h := d.new()
-			h.Write([]byte("something else entirely"))
+			_, err := h.Write([]byte("something else entirely"))
+			require.NoError(t, err)
 			h.Reset()
-			h.Write(testMsg)
-			if got, want := h.Sum(nil), d.sum(testMsg); !bytes.Equal(got, want) {
-				t.Errorf("after Reset = %x, want %x", got, want)
-			}
+			_, err = h.Write(testMsg)
+			require.NoError(t, err)
+
+			assert.Equal(t, d.sum(testMsg), h.Sum(nil))
 		})
 	}
 }
 
+// The whole reason this package exists. Same permutation, same rate, same
+// digest length, one different padding byte — and so completely different
+// output. Each package having its own Digest type now makes the mix-up a
+// compile error too, which is why this compares bytes.
 func TestKeccakIsNotSHA3(t *testing.T) {
-	// The whole reason this package exists. Same permutation, same rate,
-	// same digest length, one different padding byte — and so completely
-	// different output. Nothing about a mix-up produces a type error or a
-	// length error, which is why it is asserted here.
-	k := Sum256(testMsg)
-	s := sha3.Sum256(testMsg)
-	if k == s {
-		t.Error("Keccak-256 and SHA3-256 produced the same digest")
-	}
+	k, s := Hash256(testMsg).Bytes(), sha3.Hash256(testMsg).Bytes()
+	assert.NotEqual(t, k[:], s[:])
 
-	if k512, s512 := Sum512(testMsg), sha3.Sum512(testMsg); k512 == s512 {
-		t.Error("Keccak-512 and SHA3-512 produced the same digest")
-	}
+	k512, s512 := Hash512(testMsg).Bytes(), sha3.Hash512(testMsg).Bytes()
+	assert.NotEqual(t, k512[:], s512[:])
 }
 
 func TestRatesMatchSHA3(t *testing.T) {
 	// The padding byte is the only difference between the two packages,
 	// so the sponge parameters must be identical at matching lengths.
-	if BlockSize256 != sha3.BlockSize256 {
-		t.Errorf("BlockSize256 = %d, sha3's = %d", BlockSize256, sha3.BlockSize256)
-	}
-	if BlockSize512 != sha3.BlockSize512 {
-		t.Errorf("BlockSize512 = %d, sha3's = %d", BlockSize512, sha3.BlockSize512)
-	}
+	assert.Equal(t, sha3.BlockSize256, BlockSize256)
+	assert.Equal(t, sha3.BlockSize512, BlockSize512)
 }

@@ -6,6 +6,11 @@ import "errors"
 // fixed-size arrays, so a wrong-sized key is a compile error rather than
 // a runtime one, and the fixed-size Sum functions cannot fail at all.
 var (
+	// ErrInvalidDigest means bytes handed to a DigestNNNFromBytes were not
+	// that digest's length. There is nothing else to check: every string of
+	// the right length is a possible BLAKE3 digest.
+	ErrInvalidDigest = errors.New("blake3: invalid digest")
+
 	// ErrInvalidSize means a requested output length is below 1. BLAKE3
 	// has no upper bound — its output is a stream — so this is the only
 	// size that can be wrong.
