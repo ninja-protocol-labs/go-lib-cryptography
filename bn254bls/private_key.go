@@ -16,11 +16,16 @@ var order = fr.Modulus()
 // each call. Each carries the public key it derives, so PublicKey is a
 // field read that costs no scalar multiplication.
 
+// PrivateKeyMinPk is a scalar bound to the min-pk scheme, where the public
+// key is the small G1 point and the signature the larger G2 one.
 type PrivateKeyMinPk struct {
 	key [SeckeyLen]byte
 	pub [PubkeyMinPkLen]byte
 }
 
+// PrivateKeyMinSig is a scalar bound to the min-sig scheme, where the
+// groups are the other way round: the signature is the small G1 point and
+// the public key the larger G2 one.
 type PrivateKeyMinSig struct {
 	key [SeckeyLen]byte
 	pub [PubkeyMinSigLen]byte
@@ -60,6 +65,7 @@ func randomScalar() ([SeckeyLen]byte, *big.Int, error) {
 	}
 }
 
+// GeneratePrivateKeyMinPk returns a new min-pk key from crypto/rand.
 func GeneratePrivateKeyMinPk() (*PrivateKeyMinPk, error) {
 	var p bn254.G1Affine
 
@@ -75,6 +81,8 @@ func GeneratePrivateKeyMinPk() (*PrivateKeyMinPk, error) {
 	}, nil
 }
 
+// GeneratePrivateKeyMinSig is GeneratePrivateKeyMinPk for the min-sig
+// scheme.
 func GeneratePrivateKeyMinSig() (*PrivateKeyMinSig, error) {
 	var p bn254.G2Affine
 
@@ -90,6 +98,8 @@ func GeneratePrivateKeyMinSig() (*PrivateKeyMinSig, error) {
 	}, nil
 }
 
+// PrivateKeyMinPkFromBytes parses a big-endian scalar in [1, r-1] and
+// derives the G1 public key from it.
 func PrivateKeyMinPkFromBytes(b []byte) (*PrivateKeyMinPk, error) {
 	var p bn254.G1Affine
 
@@ -105,6 +115,8 @@ func PrivateKeyMinPkFromBytes(b []byte) (*PrivateKeyMinPk, error) {
 	}, nil
 }
 
+// PrivateKeyMinSigFromBytes is PrivateKeyMinPkFromBytes for the min-sig
+// scheme.
 func PrivateKeyMinSigFromBytes(b []byte) (*PrivateKeyMinSig, error) {
 	var p bn254.G2Affine
 
@@ -120,26 +132,36 @@ func PrivateKeyMinSigFromBytes(b []byte) (*PrivateKeyMinSig, error) {
 	}, nil
 }
 
+// Bytes returns the scalar big-endian, as a copy. It is secret: do not log
+// it, and clear it when done.
 func (k *PrivateKeyMinPk) Bytes() [SeckeyLen]byte {
 	return k.key
 }
 
+// Bytes returns the scalar big-endian, as a copy. It is secret: do not log
+// it, and clear it when done.
 func (k *PrivateKeyMinSig) Bytes() [SeckeyLen]byte {
 	return k.key
 }
 
+// PublicKey returns the G1 point this scalar derives to. It was computed
+// at construction, so this is a field read.
 func (k *PrivateKeyMinPk) PublicKey() *PublicKeyMinPk {
 	return &PublicKeyMinPk{
 		key: k.pub,
 	}
 }
 
+// PublicKey returns the G2 point this scalar derives to. It was computed
+// at construction, so this is a field read.
 func (k *PrivateKeyMinSig) PublicKey() *PublicKeyMinSig {
 	return &PublicKeyMinSig{
 		key: k.pub,
 	}
 }
 
+// Equal reports whether o holds the same scalar. It is nil-safe, and
+// constant-time because the value is secret.
 func (k *PrivateKeyMinPk) Equal(o *PrivateKeyMinPk) bool {
 	if o == nil {
 		return false
@@ -147,6 +169,8 @@ func (k *PrivateKeyMinPk) Equal(o *PrivateKeyMinPk) bool {
 	return subtle.ConstantTimeCompare(k.key[:], o.key[:]) == 1
 }
 
+// Equal reports whether o holds the same scalar. It is nil-safe, and
+// constant-time because the value is secret.
 func (k *PrivateKeyMinSig) Equal(o *PrivateKeyMinSig) bool {
 	if o == nil {
 		return false
@@ -164,6 +188,7 @@ func (k *PrivateKeyMinPk) IsZero() bool {
 	return subtle.ConstantTimeCompare(k.key[:], z[:]) == 1
 }
 
+// IsZero catches a `var k PrivateKeyMinSig`; no constructor returns one.
 func (k *PrivateKeyMinSig) IsZero() bool {
 	var z [SeckeyLen]byte
 

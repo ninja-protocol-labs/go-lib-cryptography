@@ -40,10 +40,13 @@ func New() hash.Hash {
 	return md5.New()
 }
 
+// Bytes returns the digest, as a copy.
 func (d *Digest) Bytes() [Size]byte {
 	return d.b
 }
 
+// Equal reports whether o is the same digest. It is nil-safe, and not
+// constant-time — a digest is public.
 func (d *Digest) Equal(o *Digest) bool {
 	if o == nil {
 		return false
@@ -56,6 +59,7 @@ func (d *Digest) IsZero() bool {
 	return d == nil || *d == Digest{}
 }
 
+// String returns the digest as lowercase hex.
 func (d *Digest) String() string {
 	return encoding.Hex.Encode(d.b[:])
 }

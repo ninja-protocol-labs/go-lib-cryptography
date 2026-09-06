@@ -3,9 +3,12 @@ package encoding
 import "fmt"
 
 // Base58 encodes and decodes base58 in Base58Alphabet.
-var Base58 = base58Codec{}
+var Base58 = Base58Codec{}
 
-type base58Codec struct{}
+// Base58Codec encodes and decodes base58 in Base58Alphabet. Base58 is the
+// instance; the alphabet is fixed, so there is no reason to construct
+// another.
+type Base58Codec struct{}
 
 // base58Index maps an ASCII byte to its base58 digit value, or
 // base58Invalid. It is the inverse of Base58Alphabet and has to be
@@ -42,7 +45,7 @@ var base58Index = [256]byte{
 // they carry no magnitude, so each becomes one leading alphabet[0]
 // explicitly, which is what makes an all-zero 32-byte key encode to 32
 // ones rather than to nothing.
-func (base58Codec) Encode(b []byte) string {
+func (Base58Codec) Encode(b []byte) string {
 	zeros := 0
 	for zeros < len(b) && b[zeros] == 0 {
 		zeros++
@@ -88,7 +91,7 @@ func (base58Codec) Encode(b []byte) string {
 // into different bytes. Nothing in the string says which ordering produced
 // it. This package only implements Base58Alphabet, so a string from
 // somewhere that used a different one decodes to the wrong bytes silently.
-func (base58Codec) Decode(s string) ([]byte, error) {
+func (Base58Codec) Decode(s string) ([]byte, error) {
 	if s == "" {
 		return []byte{}, nil
 	}
@@ -130,7 +133,7 @@ func (base58Codec) Decode(s string) ([]byte, error) {
 }
 
 // DecodeInto parses s into dst, which must be exactly the decoded length.
-func (base58Codec) DecodeInto(dst []byte, s string) error {
+func (Base58Codec) DecodeInto(dst []byte, s string) error {
 	b, err := Base58.Decode(s)
 	return decodeInto(dst, b, err)
 }

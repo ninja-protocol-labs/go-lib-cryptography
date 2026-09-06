@@ -43,10 +43,13 @@ func New512_256() hash.Hash {
 	return sha512.New512_256()
 }
 
+// Bytes returns the digest, as a copy.
 func (d *Digest512_256) Bytes() [Size512_256]byte {
 	return d.b
 }
 
+// Equal reports whether o is the same digest. It is nil-safe, and not
+// constant-time — a digest is public.
 func (d *Digest512_256) Equal(o *Digest512_256) bool {
 	if o == nil {
 		return false
@@ -59,6 +62,7 @@ func (d *Digest512_256) IsZero() bool {
 	return d == nil || *d == Digest512_256{}
 }
 
+// String returns the digest as lowercase hex.
 func (d *Digest512_256) String() string {
 	return encoding.Hex.Encode(d.b[:])
 }

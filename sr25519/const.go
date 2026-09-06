@@ -27,6 +27,10 @@ package sr25519
 import "github.com/ChainSafe/go-schnorrkel"
 
 const (
+	// SeckeyLen is the byte length of a private key: the expanded scalar
+	// schnorrkel signs with, not the MiniSecretKey seed — see the package
+	// doc. PubkeyLen is a compressed Ristretto point and SignatureLen the
+	// (R, s) pair.
 	SeckeyLen    = schnorrkel.SecretKeySize
 	PubkeyLen    = schnorrkel.PublicKeySize
 	SignatureLen = schnorrkel.SignatureSize
@@ -35,6 +39,9 @@ const (
 	// code.
 	ChainCodeLen = schnorrkel.ChainCodeLength
 
+	// VRFOutputLen is the byte length of a VRF output — the value the
+	// randomness is taken from — and VRFProofLen that of the proof it
+	// verifies against.
 	VRFOutputLen = 32
 	VRFProofLen  = 64
 )

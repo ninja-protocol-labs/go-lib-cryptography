@@ -6,11 +6,14 @@ import (
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
+// PrivateKey is a secp256k1 scalar, with the public key it derives to
+// computed once at construction rather than on every use.
 type PrivateKey struct {
 	key [SeckeyLen]byte
 	pub [PubkeyCompressedLen]byte
 }
 
+// GeneratePrivateKey returns a new key from crypto/rand.
 func GeneratePrivateKey() (*PrivateKey, error) {
 	var (
 		k [SeckeyLen]byte
@@ -30,6 +33,8 @@ func GeneratePrivateKey() (*PrivateKey, error) {
 	}, nil
 }
 
+// PrivateKeyFromBytes parses a big-endian scalar, rejecting zero and
+// anything at or above the curve order.
 func PrivateKeyFromBytes(b []byte) (*PrivateKey, error) {
 	var (
 		k [SeckeyLen]byte
@@ -54,16 +59,22 @@ func PrivateKeyFromBytes(b []byte) (*PrivateKey, error) {
 	}, nil
 }
 
+// Bytes returns the scalar big-endian, as a copy. It is secret: do not
+// log it, and clear it when done.
 func (k *PrivateKey) Bytes() [SeckeyLen]byte {
 	return k.key
 }
 
+// PublicKey returns the key this scalar derives to. It was computed at
+// construction, so this is a field read rather than a curve operation.
 func (k *PrivateKey) PublicKey() *PublicKey {
 	return &PublicKey{
 		key: k.pub,
 	}
 }
 
+// Equal reports whether o holds the same scalar. It is nil-safe, and
+// constant-time because the value is secret.
 func (k *PrivateKey) Equal(o *PrivateKey) bool {
 	if o == nil {
 		return false

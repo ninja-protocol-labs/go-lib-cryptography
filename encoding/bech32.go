@@ -23,11 +23,14 @@ import "strings"
 // this package free of any particular address layout. Use ConvertBits, or
 // EncodeBytes for the common case where the payload really is just bytes.
 var (
-	Bech32  = bech32Codec{constant: bech32Const}
-	Bech32m = bech32Codec{constant: bech32mConst}
+	Bech32  = Bech32Codec{constant: bech32Const}
+	Bech32m = Bech32Codec{constant: bech32mConst}
 )
 
-type bech32Codec struct {
+// Bech32Codec encodes and decodes bech32 and bech32m. Bech32 and Bech32m
+// are the two instances, differing only in the checksum constant — see the
+// note on those variables for which one a format wants.
+type Bech32Codec struct {
 	constant uint32
 }
 
@@ -36,7 +39,7 @@ type bech32Codec struct {
 // hrp must be non-empty US-ASCII in the range 33-126 with no uppercase,
 // and every value in data must fit in five bits. The result is checked
 // against MaxBech32Len; see EncodeUnlimited for the cases that exceed it.
-func (c bech32Codec) Encode(hrp string, data []byte) (string, error) {
+func (c Bech32Codec) Encode(hrp string, data []byte) (string, error) {
 	s, err := c.encode(hrp, data)
 	if err != nil {
 		return "", err
@@ -54,11 +57,11 @@ func (c bech32Codec) Encode(hrp string, data []byte) (string, error) {
 // payloads far larger than an identifier. This exists for those, and says
 // so in its name, so that skipping the check is a decision in the code
 // rather than a default nobody chose.
-func (c bech32Codec) EncodeUnlimited(hrp string, data []byte) (string, error) {
+func (c Bech32Codec) EncodeUnlimited(hrp string, data []byte) (string, error) {
 	return c.encode(hrp, data)
 }
 
-func (c bech32Codec) encode(hrp string, data []byte) (string, error) {
+func (c Bech32Codec) encode(hrp string, data []byte) (string, error) {
 	if err := validateHRP(hrp); err != nil {
 		return "", err
 	}
@@ -85,7 +88,7 @@ func (c bech32Codec) encode(hrp string, data []byte) (string, error) {
 // EncodeBytes converts data from eight-bit bytes to five-bit groups and
 // encodes it — the common case for anything that does not need to place a
 // five-bit field ahead of the payload.
-func (c bech32Codec) EncodeBytes(hrp string, data []byte) (string, error) {
+func (c Bech32Codec) EncodeBytes(hrp string, data []byte) (string, error) {
 	converted, err := ConvertBits(data, 8, 5, true)
 	if err != nil {
 		return "", err
@@ -102,7 +105,7 @@ func (c bech32Codec) EncodeBytes(hrp string, data []byte) (string, error) {
 //
 // A string longer than MaxBech32Len is rejected; use DecodeUnlimited for
 // formats that deliberately exceed it.
-func (c bech32Codec) Decode(s string) (string, []byte, error) {
+func (c Bech32Codec) Decode(s string) (string, []byte, error) {
 	if len(s) > MaxBech32Len {
 		return "", nil, ErrMalformed
 	}
@@ -110,11 +113,11 @@ func (c bech32Codec) Decode(s string) (string, []byte, error) {
 }
 
 // DecodeUnlimited is Decode without the length check. See EncodeUnlimited.
-func (c bech32Codec) DecodeUnlimited(s string) (string, []byte, error) {
+func (c Bech32Codec) DecodeUnlimited(s string) (string, []byte, error) {
 	return c.decode(s)
 }
 
-func (c bech32Codec) decode(s string) (string, []byte, error) {
+func (c Bech32Codec) decode(s string) (string, []byte, error) {
 	lower, upper := strings.ToLower(s), strings.ToUpper(s)
 	if s != lower && s != upper {
 		return "", nil, ErrMalformed
@@ -149,7 +152,7 @@ func (c bech32Codec) decode(s string) (string, []byte, error) {
 }
 
 // DecodeBytes decodes and converts the data part back to eight-bit bytes.
-func (c bech32Codec) DecodeBytes(s string) (string, []byte, error) {
+func (c Bech32Codec) DecodeBytes(s string) (string, []byte, error) {
 	hrp, data, err := c.Decode(s)
 	if err != nil {
 		return "", nil, err
@@ -235,7 +238,7 @@ func expandHRP(hrp string, data []byte) []byte {
 
 // polymod is the BCH code over GF(32) that both encodings share; only the
 // constant it is compared against differs.
-func (c bech32Codec) polymod(values []byte) uint32 {
+func (c Bech32Codec) polymod(values []byte) uint32 {
 	gen := [5]uint32{0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3}
 	chk := uint32(1)
 	for _, v := range values {
@@ -250,7 +253,7 @@ func (c bech32Codec) polymod(values []byte) uint32 {
 	return chk
 }
 
-func (c bech32Codec) createChecksum(hrp string, data []byte) []byte {
+func (c Bech32Codec) createChecksum(hrp string, data []byte) []byte {
 	values := append(expandHRP(hrp, data), 0, 0, 0, 0, 0, 0)
 	mod := c.polymod(values) ^ c.constant
 

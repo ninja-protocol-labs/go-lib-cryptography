@@ -12,6 +12,12 @@ var (
 	// encode.
 	ErrHashToCurveFailed = errors.New("bls12381: hash to curve failed")
 
-	ErrPairingFailed  = errors.New("bls12381: pairing failed")
+	// ErrPairingFailed means the pairing could not be computed. Every
+	// input is validated before it reaches this point, so it reports a
+	// fault in the library underneath rather than a caller's mistake.
+	ErrPairingFailed = errors.New("bls12381: pairing failed")
+
+	// ErrLengthMismatch means a pairing was given a different number of
+	// G1 and G2 points. e(a, b) needs one of each per term.
 	ErrLengthMismatch = errors.New("bls12381: length mismatch")
 )

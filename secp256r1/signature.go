@@ -8,6 +8,13 @@ import (
 	"golang.org/x/crypto/cryptobyte/asn1"
 )
 
+// Signature is an ECDSA signature as the pair (r, s), each a big-endian
+// scalar.
+//
+// Unlike secp256k1's, these are not normalised: crypto/ecdsa produces
+// whichever s it produces, and both (r, s) and (r, n-s) verify. A protocol
+// that needs signatures to be a unique identifier has to enforce that
+// itself.
 type Signature struct {
 	r [SignatureScalarLen]byte
 	s [SignatureScalarLen]byte
@@ -63,6 +70,7 @@ func signatureFromScalars(r, s *big.Int) (*Signature, error) {
 	return &sig, nil
 }
 
+// Bytes returns the compact encoding, r ∥ s, as a copy.
 func (sig *Signature) Bytes() [SignatureCompactLen]byte {
 	var b [SignatureCompactLen]byte
 
@@ -71,6 +79,14 @@ func (sig *Signature) Bytes() [SignatureCompactLen]byte {
 	return b
 }
 
+// DER returns the ASN.1 DER encoding, which is the form crypto/ecdsa and
+// most non-blockchain protocols exchange.
+//
+// It is a slice because DER is variable-length. DER integers are signed
+// and minimally encoded, so a leading zero byte is prepended when the high
+// bit is set and stripped otherwise, giving 70 to 72 bytes for almost
+// every signature. Note the difference from secp256k1, which never reaches
+// 72 because it normalises s below n/2 and so never pads it.
 func (sig *Signature) DER() []byte {
 	var b cryptobyte.Builder
 
@@ -82,6 +98,8 @@ func (sig *Signature) DER() []byte {
 	return b.BytesOrPanic()
 }
 
+// Equal reports whether o holds the same r and s. It is nil-safe, and not
+// constant-time — a signature is public.
 func (sig *Signature) Equal(o *Signature) bool {
 	if o == nil {
 		return false
@@ -89,10 +107,13 @@ func (sig *Signature) Equal(o *Signature) bool {
 	return sig.r == o.r && sig.s == o.s
 }
 
+// IsZero catches a `var sig Signature`; no constructor returns one, since
+// r and s are both rejected at zero.
 func (sig *Signature) IsZero() bool {
 	return sig == nil || *sig == Signature{}
 }
 
+// String returns the compact encoding as lowercase hex.
 func (sig *Signature) String() string {
 	b := sig.Bytes()
 	return encoding.Hex.Encode(b[:])

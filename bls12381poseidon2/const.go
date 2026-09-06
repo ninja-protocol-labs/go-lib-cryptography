@@ -1,4 +1,4 @@
-// Package bn254poseidon2 is the public API for Poseidon2 over BLS12-381's
+// Package bls12381poseidon2 is the public API for Poseidon2 over BLS12-381's
 // scalar field.
 //
 // # This is Poseidon2, not Poseidon

@@ -1,4 +1,4 @@
-// Package bn254mimc is the public API for MiMC over BLS12-381's scalar field.
+// Package bls12381mimc is the public API for MiMC over BLS12-381's scalar field.
 //
 // # This is not a byte hash
 //

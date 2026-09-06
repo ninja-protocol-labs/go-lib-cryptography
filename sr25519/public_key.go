@@ -5,10 +5,13 @@ import (
 	"github.com/ninja-protocol-labs/go-lib-cryptography/encoding"
 )
 
+// PublicKey is a compressed Ristretto point — the same encoding
+// Substrate accounts are written in.
 type PublicKey struct {
 	key [PubkeyLen]byte
 }
 
+// PublicKeyFromBytes parses a compressed Ristretto point.
 func PublicKeyFromBytes(b []byte) (*PublicKey, error) {
 	var k [PubkeyLen]byte
 
@@ -26,10 +29,12 @@ func PublicKeyFromBytes(b []byte) (*PublicKey, error) {
 	}, nil
 }
 
+// Bytes returns the compressed point, as a copy.
 func (k *PublicKey) Bytes() [PubkeyLen]byte {
 	return k.key
 }
 
+// Equal reports whether o is the same point. It is nil-safe.
 func (k *PublicKey) Equal(o *PublicKey) bool {
 	if o == nil {
 		return false
@@ -37,10 +42,12 @@ func (k *PublicKey) Equal(o *PublicKey) bool {
 	return k.key == o.key
 }
 
+// IsZero catches a `var k PublicKey`; no constructor returns one.
 func (k *PublicKey) IsZero() bool {
 	return k == nil || *k == PublicKey{}
 }
 
+// String returns the compressed point as lowercase hex.
 func (k *PublicKey) String() string {
 	return encoding.Hex.Encode(k.key[:])
 }

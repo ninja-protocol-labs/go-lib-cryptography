@@ -58,10 +58,13 @@ func NewKeyed256(key [KeyLen]byte) hash.Hash {
 	return blake3.New(Size256, key[:])
 }
 
+// Bytes returns the digest, as a copy.
 func (d *Digest256) Bytes() [Size256]byte {
 	return d.b
 }
 
+// Equal reports whether o is the same digest. It is nil-safe, and not
+// constant-time — a digest is public.
 func (d *Digest256) Equal(o *Digest256) bool {
 	if o == nil {
 		return false
@@ -74,6 +77,7 @@ func (d *Digest256) IsZero() bool {
 	return d == nil || *d == Digest256{}
 }
 
+// String returns the digest as lowercase hex.
 func (d *Digest256) String() string {
 	return encoding.Hex.Encode(d.b[:])
 }
