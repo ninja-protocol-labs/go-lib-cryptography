@@ -2,12 +2,7 @@ package encoding
 
 import "crypto/sha256"
 
-// ChecksumLen is the number of checksum bytes base58check appends: the
-// first four of the double SHA-256 of the payload.
-const ChecksumLen = 4
-
-// Base58Check is base58 with a four-byte checksum, in Base58Alphabet. For
-// another ordering, build one with NewBase58Check.
+// Base58Check is base58 with a four-byte checksum, in Base58Alphabet.
 //
 // # It knows no version bytes
 //
@@ -28,17 +23,9 @@ const ChecksumLen = 4
 // that dropped base58 for bech32 while keeping compatibility with older
 // base58 ones. A string round-tripping here is evidence about this
 // construction and nothing else.
-var Base58Check = NewBase58Check(Base58Alphabet)
+var Base58Check = base58CheckCodec{}
 
-// NewBase58Check returns a base58check codec over the given 58-character
-// alphabet. It panics on a malformed alphabet, as NewBase58 does.
-func NewBase58Check(alphabet string) base58CheckCodec {
-	return base58CheckCodec{b58: NewBase58(alphabet)}
-}
-
-type base58CheckCodec struct {
-	b58 base58Codec
-}
+type base58CheckCodec struct{}
 
 // checksum returns the first ChecksumLen bytes of SHA-256(SHA-256(b)).
 //
@@ -55,12 +42,12 @@ func checksum(b []byte) [ChecksumLen]byte {
 //
 // payload is whatever should be covered by the checksum, version bytes
 // included — see the note on Base58Check.
-func (c base58CheckCodec) Encode(payload []byte) string {
+func (base58CheckCodec) Encode(payload []byte) string {
 	sum := checksum(payload)
 	full := make([]byte, 0, len(payload)+ChecksumLen)
 	full = append(full, payload...)
 	full = append(full, sum[:]...)
-	return c.b58.Encode(full)
+	return Base58.Encode(full)
 }
 
 // Decode parses s, verifies the checksum, and returns the payload without
@@ -74,8 +61,8 @@ func (c base58CheckCodec) Encode(payload []byte) string {
 // The comparison is not constant-time, deliberately: the checksum is an
 // integrity check over public data, and there is nothing secret in it to
 // leak.
-func (c base58CheckCodec) Decode(s string) ([]byte, error) {
-	full, err := c.b58.Decode(s)
+func (base58CheckCodec) Decode(s string) ([]byte, error) {
+	full, err := Base58.Decode(s)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +79,7 @@ func (c base58CheckCodec) Decode(s string) ([]byte, error) {
 
 // DecodeInto parses s into dst, which must be exactly the payload length
 // once the checksum is stripped.
-func (c base58CheckCodec) DecodeInto(dst []byte, s string) error {
-	b, err := c.Decode(s)
+func (base58CheckCodec) DecodeInto(dst []byte, s string) error {
+	b, err := Base58Check.Decode(s)
 	return decodeInto(dst, b, err)
 }

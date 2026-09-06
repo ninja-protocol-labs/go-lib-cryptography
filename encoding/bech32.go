@@ -2,33 +2,6 @@ package encoding
 
 import "strings"
 
-// Bech32Charset is the 32-character data alphabet of BIP-173, ordered so
-// that the characters most easily confused are far apart in the BCH code's
-// distance metric. It excludes 1, b, i and o.
-const Bech32Charset = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
-
-const (
-	// bech32Const and bech32mConst are the two checksum constants that
-	// distinguish the two encodings. This single value is the entire
-	// difference between them.
-	bech32Const  = 1
-	bech32mConst = 0x2bc830a3
-
-	// separator divides the human-readable part from the data part. It is
-	// '1' precisely because '1' is not in the data alphabet, so the last
-	// one in the string is unambiguously the separator.
-	separator = '1'
-
-	// checksumLen is the number of data characters the checksum occupies.
-	checksumLen = 6
-
-	// MaxBech32Len is BIP-173's limit on the whole string. The BCH code's
-	// error-detection guarantee — any four errors caught, more caught with
-	// overwhelming probability — was computed for lengths up to this, so
-	// past it the checksum is weaker than advertised rather than wrong.
-	MaxBech32Len = 90
-)
-
 // Bech32 and Bech32m encode a human-readable prefix and a data part with a
 // BCH checksum, per BIP-173 and BIP-350.
 //

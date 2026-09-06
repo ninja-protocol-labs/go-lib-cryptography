@@ -1,58 +1,38 @@
 package encoding
 
-// Base58Alphabet is the alphabet base58 is normally written in: the 62
-// alphanumerics minus 0, O, I and l, the four that are hard to tell apart
-// in print or over a phone. Dropping those four is the entire reason the
-// radix is 58 rather than 62.
+import "fmt"
+
+// Base58 encodes and decodes base58 in Base58Alphabet.
+var Base58 = base58Codec{}
+
+type base58Codec struct{}
+
+// base58Index maps an ASCII byte to its base58 digit value, or
+// base58Invalid. It is the inverse of Base58Alphabet and has to be
+// regenerated if that constant ever changes — TestBase58AlphabetIsWellFormed
+// is what catches the two drifting apart.
 //
-// It is the default because almost everything that says "base58" means
-// this ordering, not because of who uses it. Other orderings of the same
-// 58 characters exist; pass one to NewBase58.
-const Base58Alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-
-// Base58 encodes and decodes base58 in Base58Alphabet. For any other
-// ordering, build one with NewBase58.
-var Base58 = NewBase58(Base58Alphabet)
-
-type base58Codec struct {
-	alphabet string
-	index    [256]int8
+// Note the gaps carved out of the otherwise contiguous ASCII runs: '0'
+// (0x30), 'I' (0x49), 'O' (0x4f) and 'l' (0x6c) are absent, which is the
+// whole reason the radix is 58 rather than 62.
+var base58Index = [256]byte{
+	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // 0x00-0x0f
+	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // 0x10-0x1f
+	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // 0x20-0x2f  ' '..'/'
+	0xff, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // 0x30-0x3f  '0'..'?'
+	0xff, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0xff, 0x11, 0x12, 0x13, 0x14, 0x15, 0xff, // 0x40-0x4f  '@'..'O'
+	0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0xff, 0xff, 0xff, 0xff, 0xff, // 0x50-0x5f  'P'..'_'
+	0xff, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0xff, 0x2c, 0x2d, 0x2e, // 0x60-0x6f  '`'..'o'
+	0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0xff, 0xff, 0xff, 0xff, 0xff, // 0x70-0x7f  'p'..DEL
+	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // 0x80-0x8f
+	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // 0x90-0x9f
+	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // 0xa0-0xaf
+	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // 0xb0-0xbf
+	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // 0xc0-0xcf
+	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // 0xd0-0xdf
+	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // 0xe0-0xef
+	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // 0xf0-0xff
 }
-
-// invalid marks a byte that is not in the alphabet. -1 rather than 0
-// because 0 is the legitimate value of the first character, which every
-// leading zero byte encodes to.
-const invalid = -1
-
-// NewBase58 returns a codec over the given 58-character alphabet.
-//
-// It panics on an alphabet that is not exactly 58 distinct ASCII bytes.
-// That is a programming error in a package-level initialiser, not
-// something a caller recovers from at runtime — unlike every other failure
-// in this package, which is reported.
-func NewBase58(alphabet string) base58Codec {
-	if len(alphabet) != 58 {
-		panic("encoding: base58 alphabet must be exactly 58 bytes")
-	}
-	c := base58Codec{alphabet: alphabet}
-	for i := range c.index {
-		c.index[i] = invalid
-	}
-	for i := 0; i < len(alphabet); i++ {
-		ch := alphabet[i]
-		if ch >= 0x80 {
-			panic("encoding: base58 alphabet must be ASCII")
-		}
-		if c.index[ch] != invalid {
-			panic("encoding: base58 alphabet has a repeated character")
-		}
-		c.index[ch] = int8(i)
-	}
-	return c
-}
-
-// Alphabet returns the 58 characters this codec encodes with.
-func (c base58Codec) Alphabet() string { return c.alphabet }
 
 // Encode returns b in base58.
 //
@@ -62,7 +42,7 @@ func (c base58Codec) Alphabet() string { return c.alphabet }
 // they carry no magnitude, so each becomes one leading alphabet[0]
 // explicitly, which is what makes an all-zero 32-byte key encode to 32
 // ones rather than to nothing.
-func (c base58Codec) Encode(b []byte) string {
+func (base58Codec) Encode(b []byte) string {
 	zeros := 0
 	for zeros < len(b) && b[zeros] == 0 {
 		zeros++
@@ -90,10 +70,10 @@ func (c base58Codec) Encode(b []byte) string {
 
 	out := make([]byte, 0, zeros+length)
 	for range zeros {
-		out = append(out, c.alphabet[0])
+		out = append(out, Base58Alphabet[0])
 	}
 	for _, d := range buf[size-length:] {
-		out = append(out, c.alphabet[d])
+		out = append(out, Base58Alphabet[d])
 	}
 	return string(out)
 }
@@ -102,18 +82,19 @@ func (c base58Codec) Encode(b []byte) string {
 //
 // It reports ErrInvalidCharacter for any byte outside the alphabet.
 //
-// Note what that does not catch: a string encoded under one ordering of
-// these 58 characters is almost always valid under another, and decodes
-// without complaint into different bytes. Nothing in the string says which
-// ordering produced it, so a codec built with the wrong alphabet fails
-// silently. Knowing which one you meant is the caller's.
-func (c base58Codec) Decode(s string) ([]byte, error) {
+// Note what that does not catch: other orderings of the same 58 characters
+// exist — Ripple's is the one still in use — and a string encoded under
+// one is almost always valid under another, decoding without complaint
+// into different bytes. Nothing in the string says which ordering produced
+// it. This package only implements Base58Alphabet, so a string from
+// somewhere that used a different one decodes to the wrong bytes silently.
+func (base58Codec) Decode(s string) ([]byte, error) {
 	if s == "" {
 		return []byte{}, nil
 	}
 
 	zeros := 0
-	for zeros < len(s) && s[zeros] == c.alphabet[0] {
+	for zeros < len(s) && s[zeros] == Base58Alphabet[0] {
 		zeros++
 	}
 
@@ -125,9 +106,9 @@ func (c base58Codec) Decode(s string) ([]byte, error) {
 	// base-256 limbs from the right.
 	length := 0
 	for i := zeros; i < len(s); i++ {
-		d := c.index[s[i]]
-		if d == invalid {
-			return nil, ErrInvalidCharacter
+		d := base58Index[s[i]]
+		if d == base58Invalid {
+			return nil, fmt.Errorf("%w: %q at index %d", ErrInvalidCharacter, s[i], i)
 		}
 		carry := int(d)
 		used := 0
@@ -149,7 +130,7 @@ func (c base58Codec) Decode(s string) ([]byte, error) {
 }
 
 // DecodeInto parses s into dst, which must be exactly the decoded length.
-func (c base58Codec) DecodeInto(dst []byte, s string) error {
-	b, err := c.Decode(s)
+func (base58Codec) DecodeInto(dst []byte, s string) error {
+	b, err := Base58.Decode(s)
 	return decodeInto(dst, b, err)
 }
